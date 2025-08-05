@@ -1,0 +1,601 @@
+/* Spaceship Cockpit CSS for PilotStation */
+
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+:root {
+  --cockpit-primary: #00ffff;
+  --cockpit-secondary: #0080ff;
+  --cockpit-accent: #ffd700;
+  --cockpit-danger: #ff4444;
+  --cockpit-warning: #ff8800;
+  --cockpit-success: #44ff44;
+  --cockpit-bg-dark: #0a0a0a;
+  --cockpit-bg-panel: rgba(0, 20, 40, 0.9);
+  --cockpit-border: rgba(0, 255, 255, 0.6);
+  --cockpit-glow: 0 0 20px;
+  --cockpit-text-glow: 0 0 10px;
+}
+
+/* Main cockpit container with video background */
+.cockpit-container {
+  min-height: 100vh;
+  font-family: 'Orbitron', monospace;
+  color: var(--cockpit-primary);
+  padding: 20px;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.cockpit-video-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: -2;
+  opacity: 0.6;
+}
+
+.cockpit-video-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(45deg, rgba(0,0,0,0.4) 0%, rgba(0,17,34,0.6) 50%, rgba(0,0,51,0.4) 100%);
+  z-index: -1;
+}
+
+/* Animated scanning lines across the screen */
+.cockpit-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cockpit-primary), transparent);
+  animation: scanline 4s linear infinite;
+  z-index: 1;
+}
+
+@keyframes scanline {
+  0% { left: -100%; top: 20%; }
+  25% { left: 100%; top: 20%; }
+  26% { left: -100%; top: 40%; }
+  50% { left: 100%; top: 40%; }
+  51% { left: -100%; top: 60%; }
+  75% { left: 100%; top: 60%; }
+  76% { left: -100%; top: 80%; }
+  100% { left: 100%; top: 80%; }
+}
+
+/* Enhanced panel styling with realistic depth */
+.cockpit-panel {
+  background: 
+    linear-gradient(135deg, var(--cockpit-bg-panel) 0%, rgba(0, 40, 80, 0.8) 100%);
+  border: 2px solid var(--cockpit-border);
+  border-radius: 12px;
+  padding: 20px;
+  margin: 15px;
+  position: relative;
+  backdrop-filter: blur(10px);
+  box-shadow: 
+    var(--cockpit-glow) var(--cockpit-primary),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  z-index: 2;
+}
+
+.cockpit-panel::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, var(--cockpit-primary), var(--cockpit-secondary), var(--cockpit-primary));
+  border-radius: 12px;
+  z-index: -1;
+  opacity: 0.3;
+}
+
+/* Instrument bezels with metallic appearance */
+.instrument-bezel {
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  background: 
+    radial-gradient(circle at 30% 30%, #666, #222),
+    linear-gradient(45deg, #444, #111);
+  border: 4px solid #333;
+  box-shadow: 
+    inset 0 0 20px rgba(0, 0, 0, 0.8),
+    0 0 30px rgba(0, 255, 255, 0.3);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.instrument-face {
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: 
+    radial-gradient(circle at center, #000 0%, #111 70%, #000 100%);
+  border: 2px solid var(--cockpit-primary);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Enhanced gauge markings */
+.gauge-markings {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+}
+
+.gauge-mark {
+  position: absolute;
+  background: var(--cockpit-accent);
+  transform-origin: center bottom;
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-accent);
+}
+
+.gauge-mark.major {
+  width: 3px;
+  height: 20px;
+  top: 10px;
+  left: calc(50% - 1.5px);
+}
+
+.gauge-mark.minor {
+  width: 1px;
+  height: 10px;
+  top: 15px;
+  left: calc(50% - 0.5px);
+}
+
+/* Realistic needle with shadow */
+.instrument-needle {
+  position: absolute;
+  width: 4px;
+  height: 80px;
+  background: linear-gradient(to top, var(--cockpit-danger), var(--cockpit-accent));
+  transform-origin: bottom center;
+  left: calc(50% - 2px);
+  bottom: 50%;
+  border-radius: 2px;
+  box-shadow: 
+    var(--cockpit-text-glow) var(--cockpit-accent),
+    2px 2px 4px rgba(0, 0, 0, 0.8);
+  z-index: 10;
+}
+
+.instrument-needle::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: -4px;
+  width: 12px;
+  height: 12px;
+  background: radial-gradient(circle, var(--cockpit-accent), var(--cockpit-warning));
+  border-radius: 50%;
+  border: 2px solid var(--cockpit-primary);
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-accent);
+}
+
+.instrument-needle::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: -6px;
+  width: 16px;
+  height: 16px;
+  background: radial-gradient(circle, #333, #111);
+  border-radius: 50%;
+  border: 2px solid var(--cockpit-primary);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+}
+
+/* Digital displays with scan lines */
+.digital-display {
+  background: #000;
+  border: 2px solid var(--cockpit-primary);
+  border-radius: 8px;
+  padding: 15px;
+  font-family: 'Share Tech Mono', monospace;
+  color: var(--cockpit-accent);
+  text-shadow: var(--cockpit-text-glow) var(--cockpit-accent);
+  position: relative;
+  overflow: hidden;
+}
+
+.digital-display::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 255, 255, 0.1) 2px,
+    rgba(0, 255, 255, 0.1) 4px
+  );
+  pointer-events: none;
+}
+
+.digital-value {
+  font-size: 2.5em;
+  font-weight: bold;
+  text-align: center;
+  margin: 10px 0;
+  text-shadow: 
+    var(--cockpit-text-glow) currentColor,
+    0 0 30px currentColor;
+}
+
+/* Enhanced buttons with realistic depth */
+.cockpit-button {
+  background: 
+    linear-gradient(145deg, #444, #222),
+    radial-gradient(circle at 30% 30%, #555, #111);
+  border: 2px solid var(--cockpit-primary);
+  border-radius: 8px;
+  color: var(--cockpit-primary);
+  padding: 12px 20px;
+  font-family: 'Orbitron', monospace;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 
+    0 4px 8px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.cockpit-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+  transition: left 0.5s ease;
+}
+
+.cockpit-button:hover {
+  background: 
+    linear-gradient(145deg, #555, #333),
+    radial-gradient(circle at 30% 30%, #666, #222);
+  box-shadow: 
+    var(--cockpit-glow) var(--cockpit-primary),
+    0 6px 12px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  transform: translateY(-2px);
+}
+
+.cockpit-button:hover::before {
+  left: 100%;
+}
+
+.cockpit-button:active {
+  transform: translateY(0);
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.8),
+    inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.cockpit-button.danger {
+  border-color: var(--cockpit-danger);
+  color: var(--cockpit-danger);
+  background: 
+    linear-gradient(145deg, #440000, #220000),
+    radial-gradient(circle at 30% 30%, #550000, #110000);
+}
+
+.cockpit-button.danger:hover {
+  box-shadow: var(--cockpit-glow) var(--cockpit-danger);
+}
+
+.cockpit-button.warning {
+  border-color: var(--cockpit-warning);
+  color: var(--cockpit-warning);
+  background: 
+    linear-gradient(145deg, #443300, #221100),
+    radial-gradient(circle at 30% 30%, #554400, #111100);
+}
+
+.cockpit-button.success {
+  border-color: var(--cockpit-success);
+  color: var(--cockpit-success);
+  background: 
+    linear-gradient(145deg, #004400, #002200),
+    radial-gradient(circle at 30% 30%, #005500, #001100);
+}
+
+/* Enhanced sliders with realistic appearance */
+.cockpit-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  background: 
+    linear-gradient(to right, #222, #444, #222);
+  border: 1px solid var(--cockpit-primary);
+  border-radius: 4px;
+  outline: none;
+  box-shadow: 
+    inset 0 2px 4px rgba(0, 0, 0, 0.6),
+    var(--cockpit-glow) var(--cockpit-primary);
+}
+
+.cockpit-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  background: 
+    radial-gradient(circle, var(--cockpit-accent), var(--cockpit-warning));
+  border: 2px solid var(--cockpit-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 
+    var(--cockpit-text-glow) var(--cockpit-accent),
+    0 0 20px var(--cockpit-primary);
+}
+
+.cockpit-slider::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  background: 
+    radial-gradient(circle, var(--cockpit-accent), var(--cockpit-warning));
+  border: 2px solid var(--cockpit-primary);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 
+    var(--cockpit-text-glow) var(--cockpit-accent),
+    0 0 20px var(--cockpit-primary);
+}
+
+/* Artificial Horizon with enhanced realism */
+.artificial-horizon {
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  background: 
+    linear-gradient(to bottom, #001133 0%, #000066 50%, #330000 100%);
+  border: 4px solid var(--cockpit-primary);
+  position: relative;
+  overflow: hidden;
+  box-shadow: 
+    inset 0 0 30px rgba(0, 0, 0, 0.8),
+    var(--cockpit-glow) var(--cockpit-primary);
+}
+
+.horizon-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: 
+    linear-gradient(90deg, transparent, var(--cockpit-accent), transparent);
+  top: 50%;
+  transform: translateY(-50%);
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-accent);
+}
+
+.horizon-line::before,
+.horizon-line::after {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 3px;
+  background: var(--cockpit-accent);
+  top: 0;
+}
+
+.horizon-line::before {
+  left: 20px;
+}
+
+.horizon-line::after {
+  right: 20px;
+}
+
+/* Pitch and roll indicators */
+.pitch-indicator {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--cockpit-primary);
+  transform-origin: center center;
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-primary);
+}
+
+.roll-indicator {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--cockpit-success);
+  transform-origin: center center;
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-success);
+}
+
+/* Status bars with animated fills */
+.status-bar {
+  width: 100%;
+  height: 20px;
+  background: #222;
+  border: 2px solid var(--cockpit-primary);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.status-fill {
+  height: 100%;
+  transition: width 0.5s ease;
+  position: relative;
+  border-radius: 8px;
+}
+
+.status-fill.fuel {
+  background: linear-gradient(90deg, var(--cockpit-success), var(--cockpit-warning), var(--cockpit-danger));
+}
+
+.status-fill.shields {
+  background: linear-gradient(90deg, var(--cockpit-primary), var(--cockpit-secondary));
+}
+
+.status-fill.temperature {
+  background: linear-gradient(90deg, var(--cockpit-primary), var(--cockpit-warning), var(--cockpit-danger));
+}
+
+.status-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 10px,
+    rgba(255, 255, 255, 0.1) 10px,
+    rgba(255, 255, 255, 0.1) 12px
+  );
+}
+
+/* Alert animations */
+@keyframes alert-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0.3; }
+}
+
+@keyframes critical-pulse {
+  0% { 
+    box-shadow: var(--cockpit-glow) var(--cockpit-danger);
+    border-color: var(--cockpit-danger);
+  }
+  50% { 
+    box-shadow: 0 0 40px var(--cockpit-danger);
+    border-color: #ff8888;
+  }
+  100% { 
+    box-shadow: var(--cockpit-glow) var(--cockpit-danger);
+    border-color: var(--cockpit-danger);
+  }
+}
+
+.alert-critical {
+  animation: critical-pulse 1s infinite;
+}
+
+.alert-warning {
+  border-color: var(--cockpit-warning) !important;
+  box-shadow: var(--cockpit-glow) var(--cockpit-warning) !important;
+}
+
+/* Hyperdrive charging effect */
+@keyframes hyperdrive-charge {
+  0% { 
+    box-shadow: var(--cockpit-glow) var(--cockpit-primary);
+    background-position: 0% 50%;
+  }
+  50% { 
+    box-shadow: 0 0 50px var(--cockpit-primary), 0 0 100px var(--cockpit-secondary);
+    background-position: 100% 50%;
+  }
+  100% { 
+    box-shadow: var(--cockpit-glow) var(--cockpit-primary);
+    background-position: 0% 50%;
+  }
+}
+
+.hyperdrive-charging {
+  background: linear-gradient(45deg, var(--cockpit-bg-panel), var(--cockpit-secondary), var(--cockpit-bg-panel));
+  background-size: 200% 200%;
+  animation: hyperdrive-charge 2s infinite;
+}
+
+/* Grid layouts for organized cockpit appearance */
+.instrument-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 30px;
+  margin: 30px 0;
+  justify-items: center;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin: 20px 0;
+}
+
+.button-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 15px;
+  margin: 20px 0;
+}
+
+/* Responsive design for different screen sizes */
+@media (max-width: 768px) {
+  .cockpit-container {
+    padding: 10px;
+  }
+  
+  .instrument-bezel {
+    width: 180px;
+    height: 180px;
+  }
+  
+  .instrument-face {
+    width: 150px;
+    height: 150px;
+  }
+  
+  .digital-value {
+    font-size: 1.8em;
+  }
+  
+  .cockpit-button {
+    padding: 8px 12px;
+    font-size: 0.9em;
+  }
+}
+
+/* Additional atmospheric effects */
+.cockpit-container::after {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 80%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 215, 0, 0.03) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
+}
