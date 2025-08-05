@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Bridge Simulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #1a1a1a;
+            color: #00ff00;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        select, button {
+            padding: 10px;
+            margin: 10px;
+            background-color: #333;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+        }
+        .station-info {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #00ff00;
+            background-color: #2a2a2a;
+        }
+        .users-list {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Bridge Simulator</h1>
+        
+        <div>
+            <select id="stationSelect">
+                <option value="commander">Commander</option>
+                <option value="pilot">Pilot</option>
+                <option value="engineer">Engineer</option>
+                <option value="weapons">Weapons</option>
+                <option value="communications">Communications</option>
+            </select>
+            <input type="text" id="playerName" placeholder="Enter your name" style="padding: 10px; margin: 10px; background-color: #333; color: #00ff00; border: 1px solid #00ff00;">
+            <button onclick="joinBridge()">Join Bridge</button>
+        </div>
+
+        <div class="station-info" id="stationInfo" style="display: none;">
+            <h3>Station: <span id="currentStation"></span></h3>
+            <p>Player: <span id="currentPlayer"></span></p>
+        </div>
+
+        <div class="users-list">
+            <h3>Bridge Crew</h3>
+            <div id="usersList"></div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let currentSession = null;
+
+        function joinBridge() {
+            const station = document.getElementById('stationSelect').value;
+            const name = document.getElementById('playerName').value || 'Anonymous';
+            const sessionId = 'session_' + Math.random().toString(36).substr(2, 9);
+            
+            currentSession = sessionId;
+            
+            socket.emit('join', {
+                session_id: sessionId,
+                station: station,
+                name: name
+            });
+
+            // Show station info
+            document.getElementById('currentStation').textContent = station;
+            document.getElementById('currentPlayer').textContent = name;
+            document.getElementById('stationInfo').style.display = 'block';
+        }
+
+        socket.on('update_users', (data) => {
+            console.log('Users updated:', data);
+            const usersList = document.getElementById('usersList');
+            usersList.innerHTML = '';
+            
+            for (const [sessionId, user] of Object.entries(data)) {
+                const userDiv = document.createElement('div');
+                userDiv.innerHTML = `<strong>${user.name}</strong> - ${user.station}`;
+                userDiv.style.padding = '5px';
+                userDiv.style.margin = '5px 0';
+                userDiv.style.backgroundColor = '#333';
+                usersList.appendChild(userDiv);
+            }
+        });
+
+        socket.on('power_update', (data) => {
+            console.log('Power update:', data);
+            // Handle power updates here
+        });
+    </script>
+</body>
+</html>
