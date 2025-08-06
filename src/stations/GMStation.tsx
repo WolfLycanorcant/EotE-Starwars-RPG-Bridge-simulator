@@ -1209,36 +1209,540 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
           )}
         </Panel>
 
-        {/* NAVIGATION */}
+        {/* ENHANCED NAVIGATION CONTROL */}
         <Panel collapsed={collapsed.nav}>
           <PanelHeader onClick={() => toggleCollapse('nav')}>
-            <PanelTitle>Navigation</PanelTitle>
+            <PanelTitle>Navigation Control</PanelTitle>
             <CollapseBtn>{collapsed.nav ? '▲' : '▼'}</CollapseBtn>
           </PanelHeader>
           {!collapsed.nav && (
             <>
+              {/* Current Status Display */}
               <Row>
                 <span>Speed:</span>
-                <span>{states.navigation?.speed ?? '—'}</span>
+                <span style={{ color: (states.navigation?.speed ?? 0) > 80 ? '#ff0040' : '#00ff88' }}>
+                  {states.navigation?.speed ?? '—'}%
+                </span>
               </Row>
               <Row>
                 <span>Altitude:</span>
-                <span>{states.navigation?.altitude?.toFixed(0) ?? '—'}</span>
+                <span>{states.navigation?.altitude?.toFixed(0) ?? '—'} km</span>
               </Row>
               <Row>
-                <span>Fuel:</span>
-                <span>{states.navigation?.fuelLevel ?? '—'}%</span>
+                <span>Distance to Mass:</span>
+                <span style={{ color: (states.navigation?.distanceToMass ?? 1000) < 100 ? '#ff0040' : (states.navigation?.distanceToMass ?? 1000) < 500 ? '#ffd700' : '#00ff88' }}>
+                  {states.navigation?.distanceToMass?.toFixed(0) ?? '1000'} km
+                </span>
+              </Row>
+              <Row>
+                <span>Fuel Level:</span>
+                <span style={{ color: (states.navigation?.fuelLevel ?? 100) < 25 ? '#ff0040' : (states.navigation?.fuelLevel ?? 100) < 50 ? '#ffd700' : '#00ff88' }}>
+                  {states.navigation?.fuelLevel ?? '—'}%
+                </span>
+              </Row>
+              <Row>
+                <span>Engine Temp:</span>
+                <span style={{ color: (states.navigation?.engineTemp ?? 30) > 80 ? '#ff0040' : '#00ff88' }}>
+                  {states.navigation?.engineTemp ?? '—'}°C
+                </span>
               </Row>
               <Row>
                 <span>Hyperdrive:</span>
-                <span>{states.navigation?.hyperdriveStatus ?? '—'}</span>
+                <span style={{ 
+                  color: states.navigation?.hyperdriveStatus === 'ready' ? '#00ff88' : 
+                         states.navigation?.hyperdriveStatus === 'charging' ? '#ffd700' : 
+                         states.navigation?.hyperdriveStatus === 'jumping' ? '#0088ff' : '#ff8800' 
+                }}>
+                  {states.navigation?.hyperdriveStatus?.toUpperCase() ?? '—'}
+                </span>
               </Row>
-              <div style={{ marginTop: 10 }}>
-                <EmitButton onClick={() => emit('set_speed', 100)}>Max Speed</EmitButton>
-                <EmitButton onClick={() => emit('hyperdrive_jump', 1)}>Force Jump</EmitButton>
-                <EmitRed onClick={() => emit('set_speed', 0)}>Full Stop</EmitRed>
-                <EmitButton onClick={() => emit('emergency_power', true)}>Emergency PWR</EmitButton>
+
+              {/* Distance to Mass Control */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  PROXIMITY SENSOR CONTROL:
+                </div>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  border: '1px solid var(--gm-blue)',
+                  borderRadius: '4px',
+                  padding: '10px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px'
+                  }}>
+                    <span style={{ fontSize: '10px', color: '#888888' }}>0 km</span>
+                    <span style={{
+                      fontSize: '14px',
+                      color: 'var(--gm-green)',
+                      fontWeight: 'bold',
+                      textShadow: '0 0 5px currentColor'
+                    }}>
+                      {(states.navigation?.distanceToMass ?? 1000).toFixed(0)} km
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#888888' }}>10000 km</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="0"
+                    max="10000"
+                    step="10"
+                    value={states.navigation?.distanceToMass ?? 1000}
+                    onChange={(e) => {
+                      const newDistance = parseInt(e.target.value);
+                      // Update GM's local state
+                      setStates(prev => ({
+                        ...prev,
+                        navigation: {
+                          ...prev.navigation,
+                          distanceToMass: newDistance
+                        }
+                      }));
+                      // Emit to navigation station using helper
+                      emit('set_distance_to_mass', newDistance, 'navigation');
+                      // Broadcast to Navigation station
+                      socket?.emit('gm_broadcast', {
+                        type: 'distance_to_mass_update',
+                        value: newDistance,
+                        room: roomRef.current,
+                        source: 'gm',
+                      });
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '6px',
+                      background: 'linear-gradient(90deg, #ff0000, #ff8800, #ffff00, #00ff00, #0088ff)',
+                      borderRadius: '3px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      accentColor: 'var(--gm-green)'
+                    }}
+                  />
+
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: '6px',
+                    fontSize: '9px',
+                    color: '#666666'
+                  }}>
+                    <span>Critical</span>
+                    <span>Close</span>
+                    <span>Safe</span>
+                    <span>Far</span>
+                  </div>
+                </div>
+
+                {/* Quick Distance Presets */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4, marginTop: 8 }}>
+                  <EmitRed onClick={() => {
+                    const criticalDistance = 50;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        distanceToMass: criticalDistance
+                      }
+                    }));
+                    emit('set_distance_to_mass', criticalDistance, 'navigation');
+                    socket?.emit('gm_broadcast', {
+                      type: 'distance_to_mass_update',
+                      value: criticalDistance,
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>CRITICAL</EmitRed>
+                  <EmitButton onClick={() => {
+                    const closeDistance = 200;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        distanceToMass: closeDistance
+                      }
+                    }));
+                    emit('set_distance_to_mass', closeDistance, 'navigation');
+                    socket?.emit('gm_broadcast', {
+                      type: 'distance_to_mass_update',
+                      value: closeDistance,
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>CLOSE</EmitButton>
+                  <EmitButton onClick={() => {
+                    const safeDistance = 1000;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        distanceToMass: safeDistance
+                      }
+                    }));
+                    emit('set_distance_to_mass', safeDistance, 'navigation');
+                    socket?.emit('gm_broadcast', {
+                      type: 'distance_to_mass_update',
+                      value: safeDistance,
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>SAFE</EmitButton>
+                  <EmitButton onClick={() => {
+                    const farDistance = 5000;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        distanceToMass: farDistance
+                      }
+                    }));
+                    emit('set_distance_to_mass', farDistance, 'navigation');
+                    socket?.emit('gm_broadcast', {
+                      type: 'distance_to_mass_update',
+                      value: farDistance,
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>FAR</EmitButton>
+                </div>
               </div>
+
+              {/* Speed Controls */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  SPEED CONTROL:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: 25 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>25%</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: 50 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>50%</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: 75 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>75%</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: 100 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>MAX</EmitButton>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: 0 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>STOP</EmitRed>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_update',
+                      value: { speed: Math.floor(Math.random() * 100) },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>RANDOM</EmitButton>
+                </div>
+              </div>
+
+              {/* Environmental Hazards */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  ENVIRONMENTAL HAZARDS:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <EmitButton onClick={() => {
+                    console.log('🌌 GM sending asteroid_field hazard to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_hazard',
+                      value: { type: 'asteroid_field', intensity: 'high' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>ASTEROIDS</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🌌 GM sending gravity_well hazard to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_hazard',
+                      value: { type: 'gravity_well', intensity: 'severe' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>GRAVITY</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🌌 GM sending ion_storm hazard to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_hazard',
+                      value: { type: 'ion_storm', intensity: 'moderate' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>ION STORM</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🌌 GM sending solar_flare hazard to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'navigation_hazard',
+                      value: { type: 'solar_flare', intensity: 'extreme' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>SOLAR FLARE</EmitButton>
+                </div>
+              </div>
+
+              {/* Hyperdrive Controls */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  HYPERDRIVE CONTROL:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'force_ready' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>READY</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'force_charge' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>CHARGE</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'force_jump' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>JUMP</EmitButton>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'emergency_stop' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>ABORT</EmitRed>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'disable' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>DISABLE</EmitRed>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hyperdrive_control',
+                      value: { action: 'cooldown' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>COOLDOWN</EmitButton>
+                </div>
+              </div>
+
+              {/* Fuel & Resources */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  FUEL CONTROL:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'fuel_control',
+                      value: { action: 'refuel', amount: 25 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>+25% FUEL</EmitButton>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'fuel_control',
+                      value: { action: 'drain', amount: 25 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>-25% FUEL</EmitRed>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'fuel_control',
+                      value: { action: 'critical', level: 10 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>CRITICAL</EmitRed>
+                </div>
+              </div>
+
+              {/* Hypermatter Control */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  HYPERMATTER CONTROL:
+                </div>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.6)',
+                  border: '1px solid var(--gm-blue)',
+                  borderRadius: '4px',
+                  padding: '10px',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '8px'
+                  }}>
+                    <span style={{ fontSize: '10px', color: '#888888' }}>0 tons</span>
+                    <span style={{
+                      fontSize: '14px',
+                      color: 'var(--gm-green)',
+                      fontWeight: 'bold',
+                      textShadow: '0 0 5px currentColor'
+                    }}>
+                      {(states.navigation?.hypermatter?.current ?? 80).toFixed(0)} tons
+                    </span>
+                    <span style={{ fontSize: '10px', color: '#888888' }}>80 tons</span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min="0"
+                    max="80"
+                    step="1"
+                    value={states.navigation?.hypermatter?.current ?? 80}
+                    onChange={(e) => {
+                      const newAmount = parseInt(e.target.value);
+                      // Update GM's local state
+                      setStates(prev => ({
+                        ...prev,
+                        navigation: {
+                          ...prev.navigation,
+                          hypermatter: {
+                            ...prev.navigation?.hypermatter,
+                            current: newAmount
+                          }
+                        }
+                      }));
+                      // Broadcast to Navigation station
+                      socket?.emit('gm_broadcast', {
+                        type: 'hypermatter_control',
+                        value: { action: 'set_amount', amount: newAmount },
+                        room: roomRef.current,
+                        source: 'gm',
+                      });
+                    }}
+                    style={{
+                      width: '100%',
+                      height: '6px',
+                      background: 'linear-gradient(90deg, #ff0000, #ff8800, #ffff00, #00ff00, #0088ff)',
+                      borderRadius: '3px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      accentColor: 'var(--gm-green)'
+                    }}
+                  />
+
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginTop: '6px',
+                    fontSize: '9px',
+                    color: '#666666'
+                  }}>
+                    <span>Empty</span>
+                    <span>Low</span>
+                    <span>Full</span>
+                  </div>
+                </div>
+
+                {/* Hypermatter Quick Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4 }}>
+                  <EmitButton onClick={() => {
+                    const fullAmount = 80;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        hypermatter: {
+                          ...prev.navigation?.hypermatter,
+                          current: fullAmount
+                        }
+                      }
+                    }));
+                    socket?.emit('gm_broadcast', {
+                      type: 'hypermatter_control',
+                      value: { action: 'refill' },
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>REFILL</EmitButton>
+                  <EmitButton onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hypermatter_control',
+                      value: { action: 'add', amount: 25 },
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>+25</EmitButton>
+                  <EmitRed onClick={() => {
+                    socket?.emit('gm_broadcast', {
+                      type: 'hypermatter_control',
+                      value: { action: 'drain', amount: 25 },
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>-25</EmitRed>
+                  <EmitRed onClick={() => {
+                    const criticalAmount = 5;
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: {
+                        ...prev.navigation,
+                        hypermatter: {
+                          ...prev.navigation?.hypermatter,
+                          current: criticalAmount
+                        }
+                      }
+                    }));
+                    socket?.emit('gm_broadcast', {
+                      type: 'hypermatter_control',
+                      value: { action: 'critical', amount: criticalAmount },
+                      room: roomRef.current,
+                      source: 'gm',
+                    });
+                  }}>CRITICAL</EmitRed>
+                </div>
+              </div>
+
+
             </>
           )}
         </Panel>

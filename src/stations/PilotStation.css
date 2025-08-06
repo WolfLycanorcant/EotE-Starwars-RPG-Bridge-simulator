@@ -18,12 +18,35 @@
 
 /* Main cockpit container with video background */
 .cockpit-container {
-  min-height: 100vh;
+  height: 100vh;
   font-family: 'Orbitron', monospace;
   color: var(--cockpit-primary);
   padding: 20px;
   position: relative;
+  overflow-y: auto;
   overflow-x: hidden;
+}
+
+/* Custom scrollbar styling for cockpit container */
+.cockpit-container::-webkit-scrollbar {
+  width: 12px;
+}
+
+.cockpit-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+}
+
+.cockpit-container::-webkit-scrollbar-thumb {
+  background: var(--cockpit-primary);
+  border-radius: 6px;
+  border: 2px solid rgba(0, 0, 0, 0.3);
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-primary);
+}
+
+.cockpit-container::-webkit-scrollbar-thumb:hover {
+  background: var(--cockpit-accent);
+  box-shadow: var(--cockpit-text-glow) var(--cockpit-accent);
 }
 
 .cockpit-video-background {
