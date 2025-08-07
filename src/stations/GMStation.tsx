@@ -3,6 +3,9 @@ import styled from 'styled-components';
 import { io, Socket } from 'socket.io-client';
 import { GameState } from '../types';
 
+// Module-level variable for star animation offset
+let gmStarOffset = 0;
+
 /* ---------- TYPES ---------- */
 type StationName = 'communications' | 'navigation' | 'weapons' | 'engineering';
 
@@ -44,6 +47,61 @@ const initialGlobalState: GlobalGameState = {
   navigation: null,
   weapons: null,
   engineering: null,
+};
+
+// Add pilot state interface for GM monitoring - matches Navigation Station
+interface PilotState {
+  heading: {
+    x: number;
+    y: number;
+  };
+  speed: number;
+  altitude: number;
+  alert: string;
+  hyperdriveStatus: 'ready' | 'charging' | 'jumping' | 'cooldown';
+  fuelLevel: number;
+  shieldStatus: number;
+  engineTemp: number;
+  navigationComputer: {
+    targetSystem: string;
+    jumpDistance: number;
+    eta: number;
+  };
+  autopilot: boolean;
+  emergencyPower: boolean;
+  hypermatter: {
+    current: number;
+    maximum: number;
+    consumptionRate: number; // units per hour
+  };
+  jumpPlanning: {
+    duration: number; // hours
+    hypermatterRequired: number;
+    isPlanning: boolean;
+  };
+  asteroidField: {
+    asteroids: Array<{
+      id: number;
+      x: number;
+      y: number;
+      size: number;
+      speed: number;
+      angle: number;
+    }>;
+    gameActive: boolean;
+    score: number;
+    environmentalHazard: {
+      type: 'none' | 'asteroid_field' | 'gravity_well' | 'ion_storm' | 'solar_flare';
+      intensity: string;
+      active: boolean;
+    };
+    enemyShip: {
+      active: boolean;
+      y: number;
+      size: number;
+      chasing: boolean;
+    };
+  };
 };
 
 /* ---------- ANIMATIONS ---------- */
@@ -164,6 +222,51 @@ const EmitRed = styled(EmitButton)`
   }
 `;
 
+/* ---------- GM ACTUATOR COMPONENT ---------- */
+const GMActuatorCanvas: React.FC<{ imageData: string }> = ({ imageData }) => {
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  return (
+    <div style={{
+      width: '200px',
+      height: '200px',
+      margin: '0 auto',
+      border: '1px solid var(--gm-blue)',
+      background: '#000',
+      position: 'relative',
+      borderRadius: '4px',
+      overflow: 'hidden'
+    }}>
+      {imageData ? (
+        <img
+          ref={imgRef}
+          src={imageData}
+          alt="Navigation Actuator Stream"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            display: 'block'
+          }}
+        />
+      ) : (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--gm-yellow)',
+          fontSize: '0.8rem',
+          textAlign: 'center'
+        }}>
+          WAITING FOR<br />NAVIGATION STREAM
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ---------- COMPONENT ---------- */
 interface GMStationProps {
   gameState?: GameState;
@@ -202,6 +305,54 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
   // Composer protocol state
   const [composerProtocol, setComposerProtocol] = useState('All Protocols (UNSECURE)');
+
+  // Actuator image stream state
+  const [actuatorImage, setActuatorImage] = useState<string>('');
+
+  // Add pilot state tracking for GM monitoring
+  const [pilotState, setPilotState] = useState<PilotState>({
+    heading: { x: 0, y: 0 },
+    speed: 0,
+    altitude: 1000,
+    alert: 'normal',
+    hyperdriveStatus: 'ready',
+    fuelLevel: 85,
+    shieldStatus: 92,
+    engineTemp: 45,
+    navigationComputer: {
+      targetSystem: 'Coruscant',
+      jumpDistance: 0.167,
+      eta: 0
+    },
+    autopilot: false,
+    emergencyPower: false,
+    hypermatter: {
+      current: 80,
+      maximum: 80,
+      consumptionRate: 2.5
+    },
+    jumpPlanning: {
+      duration: 1,
+      hypermatterRequired: 2.5,
+      isPlanning: false
+    },
+    asteroidField: {
+      asteroids: [],
+      gameActive: false,
+      score: 0,
+      environmentalHazard: {
+        type: 'none',
+        intensity: '',
+        active: false
+      },
+      enemyShip: {
+        active: false,
+        y: 300,
+        size: 20,
+        chasing: false
+      }
+    }
+  });
 
   // Emergency beacon flashing effect for GM station
   useEffect(() => {
@@ -434,7 +585,21 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
     /* Listen to every station's state_update */
     s.on('state_update', (payload: { station: StationName; state: any }) => {
+      console.log('🎮 GM Station received state_update:', payload.station, payload.state);
       setStates((prev) => ({ ...prev, [payload.station]: payload.state }));
+
+      // Track pilot state specifically for ACTUATOR display
+      if (payload.station === 'navigation') {
+        console.log('🚀 GM Station updating pilot state for actuator:', payload.state);
+        setPilotState(payload.state);
+      }
+    });
+
+    /* Listen for actuator canvas stream from Navigation Station */
+    s.on('actuator_frame', (data: { imageData: string }) => {
+      console.log('🖼️ GM Station received actuator frame, data length:', data.imageData.length);
+      // Update the actuator image display
+      setActuatorImage(data.imageData);
     });
 
     /* Listen for game state updates to sync signal strength */
@@ -1248,10 +1413,10 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               </Row>
               <Row>
                 <span>Hyperdrive:</span>
-                <span style={{ 
-                  color: states.navigation?.hyperdriveStatus === 'ready' ? '#00ff88' : 
-                         states.navigation?.hyperdriveStatus === 'charging' ? '#ffd700' : 
-                         states.navigation?.hyperdriveStatus === 'jumping' ? '#0088ff' : '#ff8800' 
+                <span style={{
+                  color: states.navigation?.hyperdriveStatus === 'ready' ? '#00ff88' :
+                    states.navigation?.hyperdriveStatus === 'charging' ? '#ffd700' :
+                      states.navigation?.hyperdriveStatus === 'jumping' ? '#0088ff' : '#ff8800'
                 }}>
                   {states.navigation?.hyperdriveStatus?.toUpperCase() ?? '—'}
                 </span>
@@ -1512,6 +1677,33 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
               </div>
 
+              {/* Enemy Pursuit */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  ENEMY PURSUIT:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
+                  <EmitRed onClick={() => {
+                    console.log('🚨 GM activating enemy pursuit to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'enemy_pursuit',
+                      value: { action: 'activate' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>ENEMY PURSUIT</EmitRed>
+                  <EmitButton onClick={() => {
+                    console.log('🚨 GM deactivating enemy pursuit to room:', roomRef.current);
+                    socket?.emit('gm_broadcast', {
+                      type: 'enemy_pursuit',
+                      value: { action: 'deactivate' },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>CLEAR PURSUIT</EmitButton>
+                </div>
+              </div>
+
               {/* Hyperdrive Controls */}
               <div style={{ marginTop: 15, marginBottom: 10 }}>
                 <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
@@ -1739,6 +1931,46 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       source: 'gm',
                     });
                   }}>CRITICAL</EmitRed>
+                </div>
+              </div>
+
+              {/* ACTUATOR Display - Exact Duplicate of Navigation Station */}
+              <div style={{ marginTop: 20, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  PILOT ACTUATOR VIEW:
+                </div>
+                <div style={{
+                  background: 'rgba(0, 0, 0, 0.8)',
+                  border: '2px solid var(--gm-blue)',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  textAlign: 'center'
+                }}>
+                  <h4 style={{
+                    margin: '0 0 10px 0',
+                    color: 'var(--gm-blue)',
+                    fontSize: '0.9rem',
+                    textTransform: 'uppercase',
+                    letterSpacing: '1px'
+                  }}>ACTUATOR</h4>
+
+                  <GMActuatorCanvas imageData={actuatorImage} />
+
+                  <div style={{ fontSize: '0.6em', color: 'var(--gm-green)', marginTop: '8px' }}>
+                    Speed: {pilotState.speed}% |
+                    Heading: {pilotState.heading.x}°, {pilotState.heading.y}°
+                  </div>
+
+                  <div style={{ fontSize: '0.6em', color: 'var(--gm-yellow)', marginTop: '5px' }}>
+                    Hazard: {pilotState.asteroidField?.environmentalHazard?.active ?
+                      `${pilotState.asteroidField.environmentalHazard.type.toUpperCase()} (${pilotState.asteroidField.environmentalHazard.intensity})` :
+                      'None'}
+                  </div>
+
+                  <div style={{ fontSize: '0.6em', color: 'var(--gm-red)', marginTop: '5px' }}>
+                    {pilotState.asteroidField?.gameActive ? 'ASTEROID GAME ACTIVE' : ''}
+                    {pilotState.asteroidField?.enemyShip?.active ? 'ENEMY PURSUIT ACTIVE' : ''}
+                  </div>
                 </div>
               </div>
 

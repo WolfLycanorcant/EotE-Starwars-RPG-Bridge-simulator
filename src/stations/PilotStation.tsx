@@ -3,6 +3,9 @@ import styled, { keyframes, css } from 'styled-components';
 import { io, Socket } from 'socket.io-client';
 import './PilotStation.css';
 
+// Module-level variable for star animation offset
+let starOffset = 0;
+
 // Types
 interface PilotState {
   heading: {
@@ -48,6 +51,12 @@ interface PilotState {
       type: 'none' | 'asteroid_field' | 'gravity_well' | 'ion_storm' | 'solar_flare';
       intensity: string;
       active: boolean;
+    };
+    enemyShip: {
+      active: boolean;
+      y: number;
+      size: number;
+      chasing: boolean;
     };
   };
 }
@@ -633,7 +642,7 @@ const AsteroidField: React.FC<{
       if (collidedAsteroid) {
         // Remove the collided asteroid
         asteroids = asteroids.filter(asteroid => asteroid.id !== collidedAsteroid.id);
-        
+
         // Reduce shields by 5%
         setPilotState(prev => ({
           ...prev,
@@ -646,12 +655,12 @@ const AsteroidField: React.FC<{
           },
           alert: 'yellow' // Brief yellow alert for shield hit
         }));
-        
+
         // Reset alert after 1 second
         setTimeout(() => {
           setPilotState(prev => ({ ...prev, alert: 'normal' }));
         }, 1000);
-        
+
         console.log('💥 Asteroid collision! Shields reduced by 5%');
       } else {
         score += 1;
@@ -675,7 +684,7 @@ const AsteroidField: React.FC<{
       const hazard = pilotState.asteroidField.environmentalHazard;
       if (hazard.active) {
         const time = Date.now() * 0.001; // Time for animations
-        
+
         switch (hazard.type) {
           case 'asteroid_field':
             // Enhanced asteroid field - more dense asteroids with red tint
@@ -691,7 +700,7 @@ const AsteroidField: React.FC<{
               ctx.fill();
             }
             break;
-            
+
           case 'gravity_well':
             // Gravity well - swirling distortion effect
             ctx.save();
@@ -701,7 +710,7 @@ const AsteroidField: React.FC<{
               const radius = 50 + Math.sin(time * 2 + i) * 20;
               const x = Math.cos(angle) * radius;
               const y = Math.sin(angle) * radius;
-              
+
               ctx.strokeStyle = `rgba(138, 43, 226, ${0.8 - (radius / 100)})`;
               ctx.lineWidth = 3;
               ctx.beginPath();
@@ -716,7 +725,7 @@ const AsteroidField: React.FC<{
             ctx.stroke();
             ctx.restore();
             break;
-            
+
           case 'ion_storm':
             // Ion storm - electrical discharge effects
             ctx.strokeStyle = '#00ffff';
@@ -726,7 +735,7 @@ const AsteroidField: React.FC<{
               const startY = Math.random() * 300;
               const endX = startX + (Math.random() - 0.5) * 60;
               const endY = startY + (Math.random() - 0.5) * 60;
-              
+
               if (Math.sin(time * 10 + i) > 0.7) {
                 ctx.beginPath();
                 ctx.moveTo(startX, startY);
@@ -738,7 +747,7 @@ const AsteroidField: React.FC<{
             ctx.fillStyle = 'rgba(0, 255, 255, 0.05)';
             ctx.fillRect(0, 0, 300, 300);
             break;
-            
+
           case 'solar_flare':
             // Solar flare - intense orange/yellow radiation waves
             ctx.save();
@@ -763,21 +772,20 @@ const AsteroidField: React.FC<{
       // Draw moving stars based on sublight speed
       ctx.fillStyle = '#fff';
       const speedFactor = pilotState.speed / 100; // Convert speed percentage to 0-1 factor
-      
+
       // Use a persistent star offset that accumulates based on current speed each frame
-      if (!window.starOffset) window.starOffset = 0;
-      window.starOffset += speedFactor * 1.5; // Accumulate movement based on current speed each frame
-      
+      starOffset += speedFactor * 1.5; // Accumulate movement based on current speed each frame
+
       for (let i = 0; i < 50; i++) {
         const baseX = (i * 37) % 300;
         const baseY = (i * 23) % 300;
-        
+
         // Move stars downward based on accumulated offset with slight variation per star
-        const starMovement = window.starOffset * (1 + i * 0.02);
+        const starMovement = starOffset * (1 + i * 0.02);
         const movingY = (baseY + starMovement) % 320; // Wrapping
         const x = baseX;
         const y = movingY - 20; // Start stars slightly above canvas
-        
+
         // Only draw stars that are within the canvas
         if (y >= 0 && y <= 300) {
           // Make stars streak when moving fast
@@ -786,6 +794,58 @@ const AsteroidField: React.FC<{
           } else {
             ctx.fillRect(x, y, 1, 1); // Normal dots at low speed
           }
+        }
+      }
+
+      // Draw enemy ship if active
+      const enemyShip = pilotState.asteroidField.enemyShip;
+      if (enemyShip.active) {
+        // Update enemy ship position based on player speed
+        let newEnemyY = enemyShip.y;
+        if (pilotState.speed < 50) {
+          // Enemy gains on player if speed is less than 50%
+          newEnemyY = Math.max(200, enemyShip.y - 1.5); // Move up (gaining)
+        } else {
+          // Enemy falls behind if speed is 50% or more
+          newEnemyY = Math.min(350, enemyShip.y + 0.5); // Move down (falling behind)
+        }
+
+        // Update enemy ship state
+        setPilotState(prev => ({
+          ...prev,
+          asteroidField: {
+            ...prev.asteroidField,
+            enemyShip: {
+              ...prev.asteroidField.enemyShip,
+              y: newEnemyY,
+              chasing: pilotState.speed < 50
+            }
+          }
+        }));
+
+        // Draw enemy ship (large red triangle)
+        ctx.fillStyle = enemyShip.chasing ? '#ff0000' : '#ff6666';
+        ctx.beginPath();
+        ctx.moveTo(150, newEnemyY); // Top point
+        ctx.lineTo(130, newEnemyY + 20); // Bottom left
+        ctx.lineTo(170, newEnemyY + 20); // Bottom right
+        ctx.closePath();
+        ctx.fill();
+
+        // Add engine glow
+        ctx.fillStyle = enemyShip.chasing ? '#ffff00' : '#ff8888';
+        ctx.beginPath();
+        ctx.arc(150, newEnemyY + 15, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Draw warning text if enemy is gaining
+        if (enemyShip.chasing) {
+          ctx.fillStyle = '#ff0000';
+          ctx.font = 'bold 12px Orbitron';
+          ctx.textAlign = 'center';
+          ctx.fillText('ENEMY PURSUIT', 150, 280);
+          ctx.fillText('INCREASE SPEED!', 150, 295);
+          ctx.textAlign = 'left';
         }
       }
 
@@ -805,7 +865,7 @@ const AsteroidField: React.FC<{
         ctx.beginPath();
         ctx.arc(asteroid.x, asteroid.y, asteroid.size, 0, Math.PI * 2);
         ctx.fill();
-        
+
         // Add glow effect for larger asteroids
         if (asteroid.size > 8) {
           ctx.strokeStyle = '#ff4444';
@@ -819,7 +879,7 @@ const AsteroidField: React.FC<{
         ctx.fillStyle = '#ffff00';
         ctx.font = 'bold 14px Orbitron';
         ctx.textAlign = 'center';
-        const hazardNames = {
+        const hazardNames: Record<string, string> = {
           asteroid_field: 'ASTEROID FIELD',
           gravity_well: 'GRAVITY WELL',
           ion_storm: 'ION STORM',
@@ -833,7 +893,7 @@ const AsteroidField: React.FC<{
       ctx.fillStyle = '#00ffff';
       ctx.font = '12px Orbitron';
       // ctx.fillText(`Score: ${score}`, 10, 20); // Hidden score display
-      
+
       if (!gameActive && asteroids.length === 0) {
         // Game ready but waiting for GM to start
       }
@@ -856,7 +916,7 @@ const AsteroidField: React.FC<{
     const ship = shipRef.current;
     const targetX = 150 + (pilotState.heading.x / 180) * 100;
     const targetY = 250 + (pilotState.heading.y / 90) * 50;
-    
+
     ship.x = Math.max(10, Math.min(290, targetX));
     ship.y = Math.max(10, Math.min(290, targetY));
   }, [pilotState.heading.x, pilotState.heading.y]);
@@ -865,6 +925,7 @@ const AsteroidField: React.FC<{
     setPilotState(prev => ({
       ...prev,
       asteroidField: {
+        ...prev.asteroidField,
         asteroids: [],
         gameActive: true,
         score: 0
@@ -875,6 +936,7 @@ const AsteroidField: React.FC<{
   return (
     <canvas
       ref={canvasRef}
+      className="actuator-canvas"
       style={{
         width: '100%',
         height: '100%',
@@ -922,6 +984,12 @@ const PilotStation: React.FC = () => {
         type: 'none',
         intensity: '',
         active: false
+      },
+      enemyShip: {
+        active: false,
+        y: 300,
+        size: 20,
+        chasing: false
       }
     }
   });
@@ -937,11 +1005,15 @@ const PilotStation: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const room = params.get('room') || 'default';
 
-    newSocket.emit('join', { room, station: 'pilot' });
+    newSocket.emit('join', { room, station: 'navigation' });
 
     // Listen for state updates
-    newSocket.on('state_update', (state: PilotState) => {
-      setPilotState(state);
+    newSocket.on('state_update', (state: Partial<PilotState>) => {
+      // Merge incoming state with previous state to prevent missing properties
+      setPilotState(prev => ({
+        ...prev,  // Keep existing state
+        ...state  // Override with incoming state (only updates provided properties)
+      }));
     });
 
     // Listen for weapon sounds from other stations
@@ -1133,6 +1205,7 @@ const PilotStation: React.FC = () => {
               setPilotState(prev => ({
                 ...prev,
                 asteroidField: {
+                  ...prev.asteroidField,
                   asteroids: [],
                   gameActive: true,
                   score: 0
@@ -1142,9 +1215,45 @@ const PilotStation: React.FC = () => {
               setPilotState(prev => ({
                 ...prev,
                 asteroidField: {
+                  ...prev.asteroidField,
                   asteroids: [],
                   gameActive: false,
                   score: 0
+                }
+              }));
+            }
+            break;
+          case 'enemy_pursuit':
+            console.log('🚨 GM enemy pursuit control:', data.value);
+            if (data.value.action === 'activate') {
+              setPilotState(prev => ({
+                ...prev,
+                asteroidField: {
+                  ...prev.asteroidField,
+                  enemyShip: {
+                    active: true,
+                    y: 300,
+                    size: 20,
+                    chasing: true
+                  }
+                },
+                alert: 'red'
+              }));
+              // Reset alert after 3 seconds but keep enemy active
+              setTimeout(() => {
+                setPilotState(prev => ({ ...prev, alert: 'normal' }));
+              }, 3000);
+            } else if (data.value.action === 'deactivate') {
+              setPilotState(prev => ({
+                ...prev,
+                asteroidField: {
+                  ...prev.asteroidField,
+                  enemyShip: {
+                    active: false,
+                    y: 300,
+                    size: 20,
+                    chasing: false
+                  }
                 }
               }));
             }
@@ -1157,6 +1266,47 @@ const PilotStation: React.FC = () => {
       newSocket.disconnect();
     };
   }, [audioEnabled]);
+
+  // Stream actuator canvas to GM Station
+  useEffect(() => {
+    if (!socket) return;
+
+    let streamInterval: NodeJS.Timeout;
+
+    // Wait a bit for socket connection to be fully established
+    const startDelay = setTimeout(() => {
+      const streamCanvas = () => {
+        const canvas = document.querySelector('.actuator-canvas') as HTMLCanvasElement;
+        if (canvas) {
+          const params = new URLSearchParams(window.location.search);
+          const room = params.get('room') || 'default';
+
+          // Convert canvas to base64 image data
+          const imageData = canvas.toDataURL('image/png');
+
+          console.log('🎥 Streaming canvas to GM Station, room:', room, 'data length:', imageData.length);
+
+          // Emit the canvas image to GM Station
+          socket.emit('actuator_stream', {
+            room,
+            imageData
+          });
+        } else {
+          console.warn('⚠️ Canvas with class .actuator-canvas not found for streaming');
+        }
+      };
+
+      // Stream canvas at 30 FPS
+      streamInterval = setInterval(streamCanvas, 33); // ~30 FPS
+    }, 1000); // Wait 1 second for socket to be ready
+
+    return () => {
+      clearTimeout(startDelay);
+      if (streamInterval) {
+        clearInterval(streamInterval);
+      }
+    };
+  }, [socket]);
 
   // Simulate altitude changes and system updates (like in original example_instruments.html)
   useEffect(() => {
@@ -1310,7 +1460,7 @@ const PilotStation: React.FC = () => {
   const initiateHyperdrive = () => {
     if (pilotState.hyperdriveStatus === 'ready' &&
       pilotState.fuelLevel > 20 &&
-      pilotState.jumpPlanning.hypermatterRequired <= pilotState.hypermatter.current) {
+      pilotState.jumpPlanning.hypermatterRequired <= (pilotState.hypermatter?.current ?? 0)) {
 
       // Consume hypermatter immediately when jump starts
       const hypermatterToConsume = pilotState.jumpPlanning.hypermatterRequired;
@@ -1442,7 +1592,8 @@ const PilotStation: React.FC = () => {
 
   return (
     <div className="cockpit-container" onClick={enableAudio}>
-      {/* Video Background */}
+      {/* Video Background - Disabled due to missing file */}
+      {/* 
       <video
         className="cockpit-video-background"
         autoPlay
@@ -1454,6 +1605,7 @@ const PilotStation: React.FC = () => {
         <source src="/assets/Background.mov" type="video/quicktime" />
       </video>
       <div className="cockpit-video-overlay"></div>
+      */}
 
       <h1 style={{
         textAlign: 'center',
@@ -1468,11 +1620,11 @@ const PilotStation: React.FC = () => {
       <StatusGrid>
         <StatusCard>
           <h2>ALERT STATUS</h2>
-          <StatusValue alert={pilotState.alert.toLowerCase()}>
-            {pilotState.alert.toUpperCase()}
+          <StatusValue alert={(pilotState.alert || 'normal').toLowerCase()}>
+            {(pilotState.alert || 'NORMAL').toUpperCase()}
           </StatusValue>
-          <StatusMessage alert={pilotState.alert.toLowerCase()}>
-            {pilotState.alert === 'normal' ? 'All clear' : pilotState.alert}
+          <StatusMessage alert={(pilotState.alert || 'normal').toLowerCase()}>
+            {pilotState.alert === 'normal' ? 'All clear' : pilotState.alert || 'Normal'}
           </StatusMessage>
         </StatusCard>
       </StatusGrid>
@@ -1481,32 +1633,32 @@ const PilotStation: React.FC = () => {
       <SystemStatus>
         <SystemCard status={pilotState.fuelLevel < 20 ? 'critical' : pilotState.fuelLevel < 50 ? 'warning' : 'good'}>
           <h4>Fuel Level</h4>
-          <div className="system-value">{pilotState.fuelLevel.toFixed(1)}</div>
+          <div className="system-value">{(pilotState.fuelLevel ?? 0).toFixed(1)}</div>
           <div className="system-unit">%</div>
         </SystemCard>
 
         <SystemCard status={pilotState.shieldStatus < 30 ? 'critical' : pilotState.shieldStatus < 60 ? 'warning' : 'good'}>
           <h4>Shield Status</h4>
-          <div className="system-value">{pilotState.shieldStatus.toFixed(0)}</div>
+          <div className="system-value">{(pilotState.shieldStatus ?? 0).toFixed(0)}</div>
           <div className="system-unit">%</div>
         </SystemCard>
 
         <SystemCard status={pilotState.engineTemp > 90 ? 'critical' : pilotState.engineTemp > 70 ? 'warning' : 'good'}>
           <h4>Engine Temp</h4>
-          <div className="system-value">{pilotState.engineTemp.toFixed(0)}</div>
+          <div className="system-value">{(pilotState.engineTemp ?? 0).toFixed(0)}</div>
           <div className="system-unit">°C</div>
         </SystemCard>
 
         <SystemCard status={pilotState.hyperdriveStatus === 'ready' ? 'good' : 'warning'}>
           <h4>Hyperdrive</h4>
           <div className="system-value" style={{ fontSize: '1.2rem' }}>
-            {pilotState.hyperdriveStatus.toUpperCase()}
+            {(pilotState.hyperdriveStatus ?? 'ready').toUpperCase()}
           </div>
         </SystemCard>
 
-        <SystemCard status={pilotState.hypermatter.current < 20 ? 'critical' : pilotState.hypermatter.current < 50 ? 'warning' : 'good'}>
+        <SystemCard status={pilotState.hypermatter?.current < 20 ? 'critical' : pilotState.hypermatter?.current < 50 ? 'warning' : 'good'}>
           <h4>Hypermatter</h4>
-          <div className="system-value">{pilotState.hypermatter.current.toFixed(0)}</div>
+          <div className="system-value">{(pilotState.hypermatter?.current ?? 0).toFixed(0)}</div>
           <div className="system-unit">tons</div>
         </SystemCard>
       </SystemStatus>
@@ -1692,7 +1844,7 @@ const PilotStation: React.FC = () => {
             textAlign: 'center',
             textShadow: 'var(--cockpit-text-glow) var(--cockpit-primary)'
           }}>HEADING CONTROL</h3>
-          
+
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
             {/* Horizontal Heading */}
             <div>
@@ -1764,8 +1916,8 @@ const PilotStation: React.FC = () => {
             margin: '0 0 15px 0',
             textAlign: 'center',
             textShadow: 'var(--cockpit-text-glow) var(--cockpit-primary)'
-          }}>ASTEROID FIELD SCANNER</h3>
-          
+          }}>ACTUATOR</h3>
+
           <div style={{
             position: 'relative',
             width: '100%',
@@ -1787,11 +1939,11 @@ const PilotStation: React.FC = () => {
               Score: {pilotState.asteroidField.score}
             </div> */}
             <div style={{ fontSize: '0.7em', color: 'var(--cockpit-primary)' }}>
-              {pilotState.asteroidField.gameActive ? 'ACTIVE - Avoid asteroids!' : 'Awaiting GM activation'}
+              {pilotState.asteroidField.gameActive ? 'ACTIVE - Avoid asteroids!' : ''}
             </div>
             <div style={{ fontSize: '0.6em', color: 'var(--cockpit-accent)', marginTop: '5px' }}>
-              Hazard: {pilotState.asteroidField.environmentalHazard.active ? 
-                `${pilotState.asteroidField.environmentalHazard.type.toUpperCase()} (${pilotState.asteroidField.environmentalHazard.intensity})` : 
+              Hazard: {pilotState.asteroidField.environmentalHazard.active ?
+                `${(pilotState.asteroidField?.environmentalHazard?.type ?? 'none').toUpperCase()} (${pilotState.asteroidField?.environmentalHazard?.intensity ?? ''})` :
                 'None'}
             </div>
           </div>
@@ -1880,7 +2032,7 @@ const PilotStation: React.FC = () => {
         {/* Hyperdrive Status */}
         <div className="digital-display" style={{ marginBottom: '20px' }}>
           <div className="digital-value" style={{ fontSize: '2.2em', margin: '10px 0' }}>
-            {pilotState.hyperdriveStatus.toUpperCase()}
+            {(pilotState.hyperdriveStatus ?? 'ready').toUpperCase()}
           </div>
         </div>
 
@@ -1898,13 +2050,13 @@ const PilotStation: React.FC = () => {
             <div className="digital-value" style={{
               fontSize: '1.5em',
               margin: '5px 0',
-              color: pilotState.hypermatter.current < 20 ? 'var(--cockpit-danger)' :
-                pilotState.hypermatter.current < 50 ? 'var(--cockpit-warning)' : 'var(--cockpit-accent)'
+              color: (pilotState.hypermatter?.current ?? 0) < 20 ? 'var(--cockpit-danger)' :
+                (pilotState.hypermatter?.current ?? 0) < 50 ? 'var(--cockpit-warning)' : 'var(--cockpit-accent)'
             }}>
-              {pilotState.hypermatter.current.toFixed(0)}
+              {(pilotState.hypermatter?.current ?? 0).toFixed(0)}
             </div>
             <div style={{ fontSize: '0.7em', color: 'var(--cockpit-primary)' }}>
-              / {pilotState.hypermatter.maximum} TONS
+              / {pilotState.hypermatter?.maximum ?? 80} TONS
             </div>
           </div>
           <div className="digital-display">
@@ -2112,7 +2264,7 @@ const PilotStation: React.FC = () => {
               color: pilotState.jumpPlanning.hypermatterRequired > pilotState.hypermatter.current ?
                 'var(--cockpit-danger)' : 'var(--cockpit-success)'
             }}>
-              {pilotState.jumpPlanning.hypermatterRequired.toFixed(1)}
+              {(pilotState.jumpPlanning?.hypermatterRequired ?? 0).toFixed(1)}
             </div>
             <div style={{ fontSize: '0.7em', color: 'var(--cockpit-primary)' }}>
               TONS
@@ -2241,7 +2393,7 @@ const PilotStation: React.FC = () => {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
               <span style={{ color: 'var(--cockpit-accent)' }}>FUEL LEVEL</span>
-              <span style={{ color: 'var(--cockpit-accent)' }}>{pilotState.fuelLevel.toFixed(1)}%</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.fuelLevel ?? 0).toFixed(1)}%</span>
             </div>
             <div className="status-bar">
               <div
@@ -2254,7 +2406,7 @@ const PilotStation: React.FC = () => {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
               <span style={{ color: 'var(--cockpit-accent)' }}>SHIELD STATUS</span>
-              <span style={{ color: 'var(--cockpit-accent)' }}>{pilotState.shieldStatus.toFixed(0)}%</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.shieldStatus ?? 0).toFixed(0)}%</span>
             </div>
             <div className="status-bar">
               <div
@@ -2267,7 +2419,7 @@ const PilotStation: React.FC = () => {
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
               <span style={{ color: 'var(--cockpit-accent)' }}>ENGINE TEMPERATURE</span>
-              <span style={{ color: 'var(--cockpit-accent)' }}>{pilotState.engineTemp.toFixed(0)}°C</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.engineTemp ?? 0).toFixed(0)}°C</span>
             </div>
             <div className="status-bar">
               <div
