@@ -1904,11 +1904,11 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   </EmitButton>
                   <EmitButton
                     onClick={() => {
-                      console.log('🎮 GM Station: Spawning enemy ship for room:', roomRef.current);
+                      console.log('🎮 GM Station: Activating enemy pursuit for room:', roomRef.current);
                       console.log('🎮 GM Station: Socket connected?', socket?.connected);
                       socket?.emit('gm_broadcast', {
-                        type: 'navigation_enemy_ship',
-                        value: { spawn: true },
+                        type: 'enemy_pursuit',
+                        value: { action: 'activate' },
                         room: roomRef.current,
                         source: 'gm'
                       });
@@ -1916,17 +1916,20 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   >
                     SPAWN ENEMY
                   </EmitButton>
-                  <EmitButton
+                  <EmitRed
                     onClick={() => {
-                      console.log('🔍 GM Station: Requesting room info for:', roomRef.current);
-                      socket?.emit('debug_room_info', {
+                      console.log('🎮 GM Station: Deactivating enemy pursuit for room:', roomRef.current);
+                      console.log('🎮 GM Station: Socket connected?', socket?.connected);
+                      socket?.emit('gm_broadcast', {
+                        type: 'enemy_pursuit',
+                        value: { action: 'deactivate' },
                         room: roomRef.current,
                         source: 'gm'
                       });
                     }}
                   >
-                    DEBUG ROOM
-                  </EmitButton>
+                    REMOVE ENEMY
+                  </EmitRed>
                 </div>
               </div>
 
