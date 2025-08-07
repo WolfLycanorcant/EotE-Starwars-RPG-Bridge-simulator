@@ -1136,6 +1136,11 @@ const PilotStation: React.FC = () => {
                 ...prev,
                 fuelLevel: data.value.level
               }));
+            } else if (data.value.action === 'set_level') {
+              setPilotState(prev => ({
+                ...prev,
+                fuelLevel: Math.max(0, Math.min(100, data.value.level))
+              }));
             }
             break;
           case 'emergency_scenario':
@@ -1255,6 +1260,15 @@ const PilotStation: React.FC = () => {
                     chasing: false
                   }
                 }
+              }));
+            }
+            break;
+          case 'shield_update':
+            console.log('🛡️ GM shield update:', data.value);
+            if (data.value.shieldStatus !== undefined) {
+              setPilotState(prev => ({
+                ...prev,
+                shieldStatus: data.value.shieldStatus
               }));
             }
             break;

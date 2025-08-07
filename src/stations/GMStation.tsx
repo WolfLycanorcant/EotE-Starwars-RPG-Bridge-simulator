@@ -88,6 +88,14 @@ interface PilotState {
       speed: number;
       angle: number;
     }>;
+    enemyShips?: Array<{
+      id: number;
+      x: number;
+      y: number;
+      size: number;
+      speed: number;
+      angle: number;
+    }>;
     gameActive: boolean;
     score: number;
     environmentalHazard: {
@@ -95,12 +103,7 @@ interface PilotState {
       intensity: string;
       active: boolean;
     };
-    enemyShip: {
-      active: boolean;
-      y: number;
-      size: number;
-      chasing: boolean;
-    };
+
   };
 };
 
@@ -338,18 +341,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
     },
     asteroidField: {
       asteroids: [],
+      enemyShips: [],
       gameActive: false,
       score: 0,
       environmentalHazard: {
         type: 'none',
         intensity: '',
         active: false
-      },
-      enemyShip: {
-        active: false,
-        y: 300,
-        size: 20,
-        chasing: false
       }
     }
   });
@@ -461,19 +459,51 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
   /* Socket setup */
   useEffect(() => {
-    // Use relative connection for ngrok compatibility
-    // This will connect to the same domain/port as the React app
-    console.log(' GM Station connecting to current domain');
-    const s = io();
+    // Use relative connection for ngrok compatibility with proper configuration
+    console.log('🔧 GM Station connecting to current domain with enhanced config');
+    const s = io({
+      transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
+      timeout: 20000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
+    });
     setSocket(s);
 
-    // Connection testing
+    // Get room from URL params
+    const room = new URLSearchParams(window.location.search).get('room') || 'default';
+    roomRef.current = room;
+
+    // Connection testing with proper room joining
     s.on('connect', () => {
-      console.log(' GM Station connected to server:', s.id);
+      console.log('✅ GM Station connected to server:', s.id);
+      console.log('📡 GM Station joining room:', room);
+      // Join room AFTER successful connection
+      s.emit('join', { room: roomRef.current, station: 'gm', name: 'Game Master' });
+
+      // Test broadcast reception immediately after joining
+      setTimeout(() => {
+        console.log('🧪 GM Station: Ready to send/receive broadcasts in room:', room);
+      }, 1000);
     });
 
     s.on('connect_error', (error) => {
-      console.error(' GM Station connection failed:', error);
+      console.error('❌ GM Station connection failed:', error);
+      console.log('🔄 Will attempt to reconnect...');
+    });
+
+    s.on('disconnect', (reason) => {
+      console.warn('⚠️ GM Station disconnected:', reason);
+      if (reason === 'io server disconnect') {
+        // Server disconnected, need to reconnect manually
+        s.connect();
+      }
+    });
+
+    s.on('reconnect', (attemptNumber) => {
+      console.log('🔄 GM Station reconnected after', attemptNumber, 'attempts');
+      // Rejoin room after reconnection
+      s.emit('join', { room: roomRef.current, station: 'gm' });
     });
 
     /* Listen for communications station frequency changes */
@@ -541,10 +571,16 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
       }
     });
 
-    const room = new URLSearchParams(window.location.search).get('room') || 'default';
-    roomRef.current = room;
+    // Room joining is now handled in the 'connect' event above
+    console.log('✅ GM Station socket setup complete, waiting for connection');
 
-    s.emit('join', { room: roomRef.current, station: 'gm' });
+    /* Listen for debug room responses */
+    s.on('debug_room_response', (data: { room: string; exists: boolean; userCount: number; users: any[] }) => {
+      console.log('🔍 GM Station: Debug room response:', data);
+      console.log('🔍 GM Station: Room exists:', data.exists);
+      console.log('🔍 GM Station: User count:', data.userCount);
+      console.log('🔍 GM Station: Users:', data.users);
+    });
 
     /* Listen for GM broadcasts (including our own messages) */
     s.on('gm_broadcast', (data: { type: string; value: any; room: string; source: string }) => {
@@ -554,7 +590,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
         case 'new_message':
           // ignore our own messages so we don't duplicate them
           if (data.source === 'communications') {
-            setCommsTransmissions(prev => [...prev, data.value]);
+            setCommsTransmissions(prev => {
+              // Check if message with this ID already exists
+              const existingMessage = prev.find(msg => msg.id === data.value.id);
+              if (existingMessage) {
+                return prev; // Don't add duplicate
+              }
+              return [...prev, data.value];
+            });
           }
           break;
         case 'emergency_beacon_update':
@@ -588,10 +631,19 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
       console.log('🎮 GM Station received state_update:', payload.station, payload.state);
       setStates((prev) => ({ ...prev, [payload.station]: payload.state }));
 
-      // Track pilot state specifically for ACTUATOR display
+      // Track pilot state specifically for ACTUATOR display and shield controls
       if (payload.station === 'navigation') {
         console.log('🚀 GM Station updating pilot state for actuator:', payload.state);
-        setPilotState(payload.state);
+        console.log('🛡️ GM Station received shield status:', payload.state.shieldStatus);
+        setPilotState(prev => ({
+          ...prev,  // Keep existing state
+          ...payload.state,  // Override with incoming state
+          // Ensure asteroidField is properly merged
+          asteroidField: {
+            ...prev.asteroidField,  // Keep existing asteroidField structure
+            ...payload.state.asteroidField  // Override with incoming asteroidField data
+          }
+        }));
       }
     });
 
@@ -646,12 +698,43 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
     socket?.emit(eventType, data);
   };
 
+  // Helper function to send broadcasts to all stations
+  const sendBroadcast = (type: string, value: any, targetStation?: string) => {
+    if (!socket || !socket.connected) {
+      console.error('❌ Cannot send broadcast: Socket not connected');
+      return;
+    }
+
+    const broadcastData = {
+      type,
+      value,
+      room: roomRef.current,
+      source: 'gm',
+      target: targetStation, // Optional: target specific station
+      timestamp: Date.now()
+    };
+
+    console.log('📡 GM Station sending broadcast:', broadcastData);
+    socket.emit('gm_broadcast', broadcastData);
+  };
+
+  // Make it available globally for testing
+  React.useEffect(() => {
+    // Add test function to window
+    (window as any).testNavigationConnection = () => {
+      console.log('🧪 Testing navigation connection...');
+      sendBroadcast('test_connection', { message: 'Hello from GM Station!' }, 'navigation');
+    };
+  }, [socket]);
+
   /* ---------- RENDER ---------- */
   return (
     <Container>
       <Header>GAME MASTER CONTROL</Header>
 
       <PanelsGrid>
+
+
         {/* ENHANCED COMMUNICATIONS */}
         <Panel collapsed={collapsed.comms}>
           <PanelHeader onClick={() => toggleCollapse('comms')}>
@@ -1632,6 +1715,127 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
               </div>
 
+              {/* Shield Status Control */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  SHIELD STATUS CONTROL:
+                </div>
+                <Row>
+                  <span>Current Shield:</span>
+                  <span style={{
+                    color: (pilotState.shieldStatus ?? 0) < 30 ? '#ff0040' :
+                      (pilotState.shieldStatus ?? 0) < 60 ? '#ffd700' : '#00ff88'
+                  }}>
+                    {(pilotState.shieldStatus ?? 0).toFixed(0)}%
+                  </span>
+                </Row>
+                
+                {/* Shield Slider Control */}
+                <div style={{ marginTop: 10, marginBottom: 10 }}>
+                  <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
+                    Set Shield Level: {pilotState.shieldStatus ?? 92}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={pilotState.shieldStatus ?? 92}
+                    onChange={(e) => {
+                      const newShieldStatus = parseInt(e.target.value);
+                      console.log('🛡️ GM setting shield status via slider to:', newShieldStatus);
+                      socket?.emit('gm_broadcast', {
+                        type: 'shield_update',
+                        value: { shieldStatus: newShieldStatus },
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                    style={{ 
+                      width: '100%',
+                      background: 'transparent',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '0.7rem', color: '#666' }}>
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                {/* Shield Macro Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4, marginTop: 8 }}>
+                  <EmitRed onClick={() => {
+                    console.log('🛡️ GM setting shields to CRITICAL (0%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 0 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Critical</EmitRed>
+                  <EmitButton onClick={() => {
+                    console.log('🛡️ GM setting shields to LOW (25%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 25 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Low</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🛡️ GM setting shields to NORMAL (75%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 75 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Normal</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🛡️ GM setting shields to FULL (100%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 100 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Full</EmitButton>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4, marginTop: 4 }}>
+                  <EmitRed onClick={() => {
+                    console.log('🛡️ GM setting shield status to 0%');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 0 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>SHIELDS DOWN</EmitRed>
+                  <EmitButton onClick={() => {
+                    console.log('🛡️ GM setting shield status to 50%');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 50 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>50%</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('🛡️ GM setting shield status to 100%');
+                    socket?.emit('gm_broadcast', {
+                      type: 'shield_update',
+                      value: { shieldStatus: 100 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>FULL SHIELDS</EmitButton>
+                </div>
+              </div>
+
               {/* Environmental Hazards */}
               <div style={{ marginTop: 15, marginBottom: 10 }}>
                 <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
@@ -1677,30 +1881,52 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
               </div>
 
-              {/* Enemy Pursuit */}
-              <div style={{ marginTop: 15, marginBottom: 10 }}>
-                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
-                  ENEMY PURSUIT:
+              {/* Enemy Ship Control */}
+              <div style={{ marginTop: 15 }}>
+                <div style={{ color: 'var(--gm-yellow)', marginBottom: 8 }}>
+                  ENEMY SHIP CONTROL:
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4 }}>
-                  <EmitRed onClick={() => {
-                    console.log('🚨 GM activating enemy pursuit to room:', roomRef.current);
-                    socket?.emit('gm_broadcast', {
-                      type: 'enemy_pursuit',
-                      value: { action: 'activate' },
-                      room: roomRef.current,
-                      source: 'gm'
-                    });
-                  }}>ENEMY PURSUIT</EmitRed>
-                  <EmitButton onClick={() => {
-                    console.log('🚨 GM deactivating enemy pursuit to room:', roomRef.current);
-                    socket?.emit('gm_broadcast', {
-                      type: 'enemy_pursuit',
-                      value: { action: 'deactivate' },
-                      room: roomRef.current,
-                      source: 'gm'
-                    });
-                  }}>CLEAR PURSUIT</EmitButton>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                  <EmitButton
+                    onClick={() => {
+                      console.log('🧪 GM Station: Testing connection to room:', roomRef.current);
+                      console.log('🧪 GM Station: Socket connected?', socket?.connected);
+                      console.log('🧪 GM Station: Socket ID:', socket?.id);
+                      socket?.emit('gm_broadcast', {
+                        type: 'test_connection',
+                        value: 'Hello Navigation!',
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                  >
+                    TEST CONNECTION
+                  </EmitButton>
+                  <EmitButton
+                    onClick={() => {
+                      console.log('🎮 GM Station: Spawning enemy ship for room:', roomRef.current);
+                      console.log('🎮 GM Station: Socket connected?', socket?.connected);
+                      socket?.emit('gm_broadcast', {
+                        type: 'navigation_enemy_ship',
+                        value: { spawn: true },
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                  >
+                    SPAWN ENEMY
+                  </EmitButton>
+                  <EmitButton
+                    onClick={() => {
+                      console.log('🔍 GM Station: Requesting room info for:', roomRef.current);
+                      socket?.emit('debug_room_info', {
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                  >
+                    DEBUG ROOM
+                  </EmitButton>
                 </div>
               </div>
 
@@ -1766,31 +1992,90 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
                   FUEL CONTROL:
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 4 }}>
+                <Row>
+                  <span>Current Fuel:</span>
+                  <span style={{
+                    color: (pilotState.fuelLevel ?? 0) < 25 ? '#ff0040' :
+                      (pilotState.fuelLevel ?? 0) < 50 ? '#ffd700' : '#00ff88'
+                  }}>
+                    {(pilotState.fuelLevel ?? 0).toFixed(0)}%
+                  </span>
+                </Row>
+                
+                {/* Fuel Slider Control */}
+                <div style={{ marginTop: 10, marginBottom: 10 }}>
+                  <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
+                    Set Fuel Level: {pilotState.fuelLevel ?? 85}%
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={pilotState.fuelLevel ?? 85}
+                    onChange={(e) => {
+                      const newFuelLevel = parseInt(e.target.value);
+                      console.log('⛽ GM setting fuel level via slider to:', newFuelLevel);
+                      socket?.emit('gm_broadcast', {
+                        type: 'fuel_control',
+                        value: { action: 'set_level', level: newFuelLevel },
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                    style={{ 
+                      width: '100%',
+                      background: 'transparent',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '0.7rem', color: '#666' }}>
+                    <span>0%</span>
+                    <span>25%</span>
+                    <span>50%</span>
+                    <span>75%</span>
+                    <span>100%</span>
+                  </div>
+                </div>
+
+                {/* Fuel Macro Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4, marginTop: 8 }}>
+                  <EmitRed onClick={() => {
+                    console.log('⛽ GM setting fuel to EMPTY (0%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'fuel_control',
+                      value: { action: 'set_level', level: 0 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Empty</EmitRed>
+                  <EmitRed onClick={() => {
+                    console.log('⛽ GM setting fuel to CRITICAL (10%)');
+                    socket?.emit('gm_broadcast', {
+                      type: 'fuel_control',
+                      value: { action: 'set_level', level: 10 },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Critical</EmitRed>
                   <EmitButton onClick={() => {
+                    console.log('⛽ GM setting fuel to NORMAL (75%)');
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'refuel', amount: 25 },
+                      value: { action: 'set_level', level: 75 },
                       room: roomRef.current,
                       source: 'gm'
                     });
-                  }}>+25% FUEL</EmitButton>
-                  <EmitRed onClick={() => {
+                  }}>Normal</EmitButton>
+                  <EmitButton onClick={() => {
+                    console.log('⛽ GM setting fuel to FULL (100%)');
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'drain', amount: 25 },
+                      value: { action: 'set_level', level: 100 },
                       room: roomRef.current,
                       source: 'gm'
                     });
-                  }}>-25% FUEL</EmitRed>
-                  <EmitRed onClick={() => {
-                    socket?.emit('gm_broadcast', {
-                      type: 'fuel_control',
-                      value: { action: 'critical', level: 10 },
-                      room: roomRef.current,
-                      source: 'gm'
-                    });
-                  }}>CRITICAL</EmitRed>
+                  }}>Full</EmitButton>
                 </div>
               </div>
 
@@ -1962,14 +2247,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   </div>
 
                   <div style={{ fontSize: '0.6em', color: 'var(--gm-yellow)', marginTop: '5px' }}>
-                    Hazard: {pilotState.asteroidField?.environmentalHazard?.active ?
-                      `${pilotState.asteroidField.environmentalHazard.type.toUpperCase()} (${pilotState.asteroidField.environmentalHazard.intensity})` :
+                    Hazard: {states.navigation?.asteroidField?.environmentalHazard?.active ?
+                      `${(states.navigation.asteroidField.environmentalHazard.type ?? 'none').toUpperCase()} (${states.navigation.asteroidField.environmentalHazard.intensity ?? ''})` :
                       'None'}
                   </div>
 
                   <div style={{ fontSize: '0.6em', color: 'var(--gm-red)', marginTop: '5px' }}>
-                    {pilotState.asteroidField?.gameActive ? 'ASTEROID GAME ACTIVE' : ''}
-                    {pilotState.asteroidField?.enemyShip?.active ? 'ENEMY PURSUIT ACTIVE' : ''}
+                    {states.navigation?.asteroidField?.gameActive ? 'ASTEROID GAME ACTIVE' : ''}
                   </div>
                 </div>
               </div>
