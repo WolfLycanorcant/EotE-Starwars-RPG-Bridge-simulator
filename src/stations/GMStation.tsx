@@ -2586,6 +2586,154 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   </EmitRed>
                 </div>
               </div>
+
+              {/* Ally Spawning Controls */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                border: '1px solid var(--gm-green)', 
+                borderRadius: '4px',
+                backgroundColor: 'rgba(0, 255, 136, 0.1)'
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-green)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  ALLY SPAWNING:
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                  <EmitButton onClick={() => {
+                    const allyId = `ally-${Date.now()}`;
+                    sendBroadcast('spawn_ally_ship', {
+                      id: allyId,
+                      x: Math.random() * 360,
+                      y: 60 + Math.random() * 30,
+                      heading: Math.random() * 360,
+                      speed: 25 + Math.random() * 30,
+                      size: 1 + Math.random() * 1.5,
+                      hp: 120,
+                      shields: 80,
+                      ecmFreq: Math.floor(Math.random() * 1000),
+                      faction: 'ally'
+                    });
+                  }}>
+                    Spawn Ally Fighter
+                  </EmitButton>
+                  
+                  <EmitButton onClick={() => {
+                    const allyId = `ally-cruiser-${Date.now()}`;
+                    sendBroadcast('spawn_ally_ship', {
+                      id: allyId,
+                      x: Math.random() * 360,
+                      y: 50 + Math.random() * 25,
+                      heading: Math.random() * 360,
+                      speed: 15 + Math.random() * 20,
+                      size: 2 + Math.random() * 1,
+                      hp: 250,
+                      shields: 150,
+                      ecmFreq: Math.floor(Math.random() * 1000),
+                      faction: 'ally'
+                    });
+                  }}>
+                    Spawn Ally Cruiser
+                  </EmitButton>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <EmitButton onClick={() => {
+                    sendBroadcast('ally_squadron_spawn', {
+                      count: 4,
+                      ecmFreqs: Array.from({ length: 4 }, () => Math.floor(Math.random() * 1000)),
+                      faction: 'ally'
+                    });
+                  }}>
+                    Spawn Squadron (4)
+                  </EmitButton>
+                  
+                  <EmitButton onClick={() => {
+                    sendBroadcast('clear_all_allies', {});
+                  }}>
+                    Clear Allies
+                  </EmitButton>
+                </div>
+              </div>
+
+              {/* Neutral Spawning Controls */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                border: '1px solid var(--gm-yellow)', 
+                borderRadius: '4px',
+                backgroundColor: 'rgba(255, 215, 0, 0.1)'
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-yellow)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  NEUTRAL SPAWNING:
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                  <EmitButton onClick={() => {
+                    const neutralId = `neutral-${Date.now()}`;
+                    sendBroadcast('spawn_neutral_ship', {
+                      id: neutralId,
+                      x: Math.random() * 360,
+                      y: 60 + Math.random() * 30,
+                      heading: Math.random() * 360,
+                      speed: 20 + Math.random() * 25,
+                      size: 1 + Math.random() * 1.2,
+                      hp: 80,
+                      shields: 40,
+                      ecmFreq: Math.floor(Math.random() * 1000),
+                      faction: 'neutral'
+                    });
+                  }}>
+                    Spawn Trader
+                  </EmitButton>
+                  
+                  <EmitButton onClick={() => {
+                    const neutralId = `neutral-transport-${Date.now()}`;
+                    sendBroadcast('spawn_neutral_ship', {
+                      id: neutralId,
+                      x: Math.random() * 360,
+                      y: 50 + Math.random() * 25,
+                      heading: Math.random() * 360,
+                      speed: 10 + Math.random() * 15,
+                      size: 2.5 + Math.random() * 1,
+                      hp: 150,
+                      shields: 60,
+                      ecmFreq: Math.floor(Math.random() * 1000),
+                      faction: 'neutral'
+                    });
+                  }}>
+                    Spawn Transport
+                  </EmitButton>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <EmitButton onClick={() => {
+                    sendBroadcast('neutral_convoy_spawn', {
+                      count: 3,
+                      ecmFreqs: Array.from({ length: 3 }, () => Math.floor(Math.random() * 1000)),
+                      faction: 'neutral'
+                    });
+                  }}>
+                    Spawn Convoy (3)
+                  </EmitButton>
+                  
+                  <EmitButton onClick={() => {
+                    sendBroadcast('clear_all_neutrals', {});
+                  }}>
+                    Clear Neutrals
+                  </EmitButton>
+                </div>
+              </div>
             </>
           )}
         </Panel>

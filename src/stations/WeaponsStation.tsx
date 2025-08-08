@@ -2,36 +2,32 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { shipStore, Ship } from '../stores/shipStore';
 
-/** =========================
- *  Types
- *  ========================= */
 type Subsystem = 'ENGINES' | 'WEAPONS' | 'SHIELDS' | 'COMMS';
 type Ammo = 'KINETIC' | 'ION' | 'SEEKER' | 'PIERCING';
 
 interface EnemyShip {
   id: string;
-  // Radar polar spawn input (deg + 0..100 distance) — GM spawns use this
-  x: number;    // angle deg on radar
-  y: number;    // distance 0..100 (scaled to radar radius)
-  // World-ish internal
-  heading: number;     // deg
-  speed: number;       // arbitrary radar units/sec
-  size: number;        // 1..3 (affects blip size and hitbox)
-  hp: number;          // hull
-  shields: number;     // shield
-  ecmFreq: number;     // for missile lock mini-game
+  x: number;
+  y: number;
+  heading: number;
+  speed: number;
+  size: number;
+  hp: number;
+  shields: number;
+  ecmFreq: number;
   alive: boolean;
   wreck: boolean;
-  salvageProgress: number; // 0..1
-  waypoint?: {         // pathfinding waypoint
-    x: number;         // target angle
-    y: number;         // target distance
-    reachTime: number; // when to pick new waypoint
+  salvageProgress: number;
+  faction?: 'enemy' | 'ally' | 'neutral';
+  waypoint?: {
+    x: number;
+    y: number;
+    reachTime: number;
   };
 }
 
 interface WeaponsStationProps {
-  socket?: Socket | null; // optional: App currently doesn't pass it, so we'll create our own by default
+  socket?: Socket | null;
 }
 
 const R_WIDTH = 520;
@@ -43,16 +39,15 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const toRad = (deg: number) => (deg * Math.PI) / 180;
 const wrapDeg = (d: number) => ((d % 360) + 360) % 360;
 
-/** Ammo definitions (damage & behavior modifiers) */
 const AMMO_DEF: Record<Ammo, {
   name: string;
   heatPerShot: number;
-  baseDamage: number;           // before subsystem modifiers
-  shieldMult: number;           // vs shields
-  hullMult: number;             // vs hull
-  spreadMult: number;           // accuracy modifier
-  requiresLock?: boolean;       // seeker requires lock
-  critSubsystem?: boolean;      // piercing gets more crit chance
+  baseDamage: number;
+  shieldMult: number;
+  hullMult: number;
+  spreadMult: number;
+  requiresLock?: boolean;
+  critSubsystem?: boolean;
 }> = {
   KINETIC: { name: 'KINETIC', heatPerShot: 18, baseDamage: 12, shieldMult: 0.7, hullMult: 1.2, spreadMult: 1.0 },
   ION: { name: 'ION', heatPerShot: 14, baseDamage: 8, shieldMult: 1.8, hullMult: 0.4, spreadMult: 1.1 },
@@ -60,7 +55,6 @@ const AMMO_DEF: Record<Ammo, {
   PIERCING: { name: 'PIERCING', heatPerShot: 22, baseDamage: 14, shieldMult: 0.9, hullMult: 1.1, spreadMult: 0.9, critSubsystem: true }
 };
 
-/** Subsystem aim bonuses */
 const SUBSYS_DEF: Record<Subsystem, { name: string; dmgMult: number; special?: string }> = {
   ENGINES: { name: 'ENGINES', dmgMult: 1.0, special: 'slow_on_hit' },
   WEAPONS: { name: 'WEAPONS', dmgMult: 1.0, special: 'accuracy_debuff' },
@@ -68,11 +62,7 @@ const SUBSYS_DEF: Record<Subsystem, { name: string; dmgMult: number; special?: s
   COMMS: { name: 'COMMS', dmgMult: 0.9, special: 'lock_weaken' }
 };
 
-/** =========================
- *  Component
- *  ========================= */
 const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) => {
-  /** ----- Socket & room ----- */
   const [socket, setSocket] = useState<Socket | null>(socketProp ?? null);
   const roomRef = useRef<string>('default');
 
@@ -81,7 +71,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       setSocket(socketProp);
       return;
     }
-    // Self-managed socket (works with your App which doesn't pass one)
     const s = io({
       transports: ['websocket', 'polling'],
       timeout: 20000,
@@ -89,7 +78,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     });
     setSocket(s);
 
-    // read room from URL
     const room = new URLSearchParams(window.location.search).get('room') || 'default';
     roomRef.current = room;
 
@@ -100,70 +88,64 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     return () => { s.disconnect(); };
   }, [socketProp]);
 
-  /** ----- Canvas & animation ----- */
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [enemies, setEnemies] = useState<EnemyShip[]>([]);
   const [selectedEnemyId, setSelectedEnemyId] = useState<string | null>(null);
 
-  /** ----- Target solve & tracking ----- */
-  const [solveQuality, setSolveQuality] = useState(0);  // 0..1
-  const [reticleTightness, setReticleTightness] = useState(16); // px ring to keep target inside to build solve
+  const [solveQuality, setSolveQuality] = useState(0);
+  const [reticleTightness, setReticleTightness] = useState(16);
   const [showLead, setShowLead] = useState(false);
 
-  /** ----- Track stabilization (pilot drift) ----- */
-  const [trackError, setTrackError] = useState(0); // adds to spread
-  const [pilotTurnRate, setPilotTurnRate] = useState(0); // from nav updates
-  const [playerCorrection, setPlayerCorrection] = useState(0); // -1..1 from A/D or left/right arrow
+  const [trackError, setTrackError] = useState(0);
+  const [pilotTurnRate, setPilotTurnRate] = useState(0);
+  const [playerCorrection, setPlayerCorrection] = useState(0);
 
-  /** ----- Heat / Overheat / Active reload ----- */
-  const [heat, setHeat] = useState(0);             // 0..100
+  const [heat, setHeat] = useState(0);
   const [overheated, setOverheated] = useState(false);
-  const [reloadWindow, setReloadWindow] = useState<{ start: number; end: number } | null>(null); // 0..1 meter
-  const [jamTimer, setJamTimer] = useState<number>(0); // fallback if miss active reload
+  const [reloadWindow, setReloadWindow] = useState<{ start: number; end: number } | null>(null);
+  const [jamTimer, setJamTimer] = useState<number>(0);
 
-  /** ----- Missile lock mini-game ----- */
-  const [playerFreq, setPlayerFreq] = useState(500); // 0..1000 dial
-  const [lockFill, setLockFill] = useState(0);       // 0..1
+  const [playerFreq, setPlayerFreq] = useState(500);
+  const [lockFill, setLockFill] = useState(0);
   const [locked, setLocked] = useState(false);
-  const [ecmKnock, setEcmKnock] = useState(0);       // visual drop on ECM burst
+  const [ecmKnock, setEcmKnock] = useState(0);
 
-  /** ----- Weapon config ----- */
   const [ammo, setAmmo] = useState<Ammo>('KINETIC');
   const [aim, setAim] = useState<Subsystem>('ENGINES');
-  const [projectileSpeed] = useState(220); // radar units/sec; tweak to taste
+  const [projectileSpeed] = useState(220);
 
-  /** ----- Loot after salvage ----- */
   const [missiles, setMissiles] = useState(4);
   const [heatSinks, setHeatSinks] = useState(0);
 
-  /** ----- Input: fire, reload timing, track correction ----- */
+  const [lrcHtml, setLrcHtml] = useState<string>('');
+
+  const [ships, setShips] = useState<Ship[]>(shipStore.getShips());
+  const [pinnedShips, setPinnedShips] = useState<Record<string, 'white' | 'red'>>(shipStore.getPinnedShips());
+  const [doublePinnedShipId, setDoublePinnedShipId] = useState<string | null>(shipStore.getDoublePinnedShipId());
+  const [currentRegion, setCurrentRegion] = useState<string>(shipStore.getCurrentRegion());
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
       if (e.code === 'Space') {
-        // If jammed/overheated, Space is used for active reload attempt
         if (overheated && reloadWindow) {
-          const marker = Math.random(); // Replace with real timing meter if you want UI-synced bar
+          const marker = Math.random();
           if (marker >= reloadWindow.start && marker <= reloadWindow.end) {
-            // Clean clear
             setOverheated(false);
             setHeat(35);
             setReloadWindow(null);
             setJamTimer(0);
           } else {
-            // Bad clear — longer jam
             setReloadWindow(null);
-            setJamTimer(1.5); // seconds
+            setJamTimer(1.5);
           }
           return;
         }
 
-        // Normal firing
         handleFire();
       }
 
-      // Track correction: A/D or arrows
       if (e.code === 'KeyA' || e.code === 'ArrowLeft') setPlayerCorrection(-1);
       if (e.code === 'KeyD' || e.code === 'ArrowRight') setPlayerCorrection(1);
     };
@@ -182,7 +164,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     };
   }, [overheated, reloadWindow, ammo, locked, selectedEnemyId, enemies, heat]);
 
-  /** ----- Listen to GM spawns & events + pilot/nav drift ----- */
   useEffect(() => {
     if (!socket) return;
 
@@ -255,13 +236,11 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           break;
         }
         case 'ecm_burst': {
-          // ECM knocks down lock fill and adds a small screen effect
           setLockFill(v => Math.max(0, v - 0.35));
           setEcmKnock(1);
           break;
         }
         case 'clear_all_enemies': {
-          // Clear all enemies from the radar
           console.log('🧹 Weapons Station: Clearing all enemies from radar');
           setEnemies([]);
           setSelectedEnemyId(null);
@@ -270,12 +249,126 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           break;
         }
         case 'region_update': {
-          // Update current region when GM changes galaxy region
           console.log('🌌 Weapons Station: Updating galaxy region to:', data.value);
           setCurrentRegion(data.value);
-          // Also update the ship store with the new region
           if (typeof data.value === 'string') {
             shipStore.setCurrentRegion(data.value as any);
+          }
+          break;
+        }
+        case 'spawn_ally_ship': {
+          const e = data.value as Partial<EnemyShip & { faction: string }>;
+          console.log('🤝 Weapons Station: Spawning ally ship:', e.id);
+          setEnemies(prev => [
+            ...prev,
+            {
+              id: e.id || `ally-${Date.now()}`,
+              x: typeof e.x === 'number' ? e.x : Math.random() * 360,
+              y: typeof e.y === 'number' ? e.y : Math.random() * 100,
+              heading: typeof e.heading === 'number' ? e.heading : Math.random() * 360,
+              speed: typeof e.speed === 'number' ? e.speed : (Math.random() * 40 + 20),
+              size: typeof e.size === 'number' ? e.size : (1 + Math.random() * 2),
+              hp: e.hp || 120,
+              shields: e.shields || 80,
+              ecmFreq: e.ecmFreq || Math.floor(Math.random() * 1000),
+              alive: true,
+              wreck: false,
+              salvageProgress: 0,
+              faction: 'ally' as const
+            }
+          ]);
+          break;
+        }
+        case 'ally_squad_spawn': {
+          const n = data.value?.count ?? 4;
+          const base = Math.random() * 360;
+          const ecmFreqs = data.value?.ecmFreqs || Array.from({ length: n }, () => Math.floor(Math.random() * 1000));
+          console.log('🤝 Weapons Station: Spawning ally squadron of', n, 'ships');
+          setEnemies(prev => [
+            ...prev,
+            ...Array.from({ length: n }).map((_, i) => ({
+              id: `ally-squad-${Date.now()}-${i}`,
+              x: wrapDeg(base + i * (360 / n)),
+              y: 60 + Math.random() * 30,
+              heading: wrapDeg(base + i * (360 / n) + 180),
+              speed: 30 + Math.random() * 40,
+              size: 1 + Math.random() * 2,
+              hp: 120,
+              shields: 80,
+              ecmFreq: ecmFreqs[i] || Math.floor(Math.random() * 1000),
+              alive: true,
+              wreck: false,
+              salvageProgress: 0,
+              faction: 'ally' as const
+            }))
+          ]);
+          break;
+        }
+        case 'spawn_neutral_ship': {
+          const e = data.value as Partial<EnemyShip & { faction: string }>;
+          console.log('⚪ Weapons Station: Spawning neutral ship:', e.id);
+          setEnemies(prev => [
+            ...prev,
+            {
+              id: e.id || `neutral-${Date.now()}`,
+              x: typeof e.x === 'number' ? e.x : Math.random() * 360,
+              y: typeof e.y === 'number' ? e.y : Math.random() * 100,
+              heading: typeof e.heading === 'number' ? e.heading : Math.random() * 360,
+              speed: typeof e.speed === 'number' ? e.speed : (Math.random() * 30 + 15),
+              size: typeof e.size === 'number' ? e.size : (1 + Math.random() * 2),
+              hp: e.hp || 80,
+              shields: e.shields || 40,
+              ecmFreq: e.ecmFreq || Math.floor(Math.random() * 1000),
+              alive: true,
+              wreck: false,
+              salvageProgress: 0,
+              faction: 'neutral' as const
+            }
+          ]);
+          break;
+        }
+        case 'neutral_convoy_spawn': {
+          const n = data.value?.count ?? 3;
+          const base = Math.random() * 360;
+          const ecmFreqs = data.value?.ecmFreqs || Array.from({ length: n }, () => Math.floor(Math.random() * 1000));
+          console.log('⚪ Weapons Station: Spawning neutral convoy of', n, 'ships');
+          setEnemies(prev => [
+            ...prev,
+            ...Array.from({ length: n }).map((_, i) => ({
+              id: `neutral-convoy-${Date.now()}-${i}`,
+              x: wrapDeg(base + i * (360 / n)),
+              y: 50 + Math.random() * 25,
+              heading: wrapDeg(base + i * (360 / n) + 180),
+              speed: 15 + Math.random() * 20,
+              size: 1.5 + Math.random() * 1.5,
+              hp: 100,
+              shields: 50,
+              ecmFreq: ecmFreqs[i] || Math.floor(Math.random() * 1000),
+              alive: true,
+              wreck: false,
+              salvageProgress: 0,
+              faction: 'neutral' as const
+            }))
+          ]);
+          break;
+        }
+        case 'clear_all_allies': {
+          console.log('🧹 Weapons Station: Clearing all ally ships from radar');
+          setEnemies(prev => prev.filter(enemy => (enemy as any).faction !== 'ally'));
+          if (selectedEnemyId && enemies.find(e => e.id === selectedEnemyId && (e as any).faction === 'ally')) {
+            setSelectedEnemyId(null);
+            setLockFill(0);
+            setLocked(false);
+          }
+          break;
+        }
+        case 'clear_all_neutrals': {
+          console.log('🧹 Weapons Station: Clearing all neutral ships from radar');
+          setEnemies(prev => prev.filter(enemy => (enemy as any).faction !== 'neutral'));
+          if (selectedEnemyId && enemies.find(e => e.id === selectedEnemyId && (e as any).faction === 'neutral')) {
+            setSelectedEnemyId(null);
+            setLockFill(0);
+            setLocked(false);
           }
           break;
         }
@@ -283,13 +376,11 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     };
 
     const onStateUpdate = (payload: { station: string; state: any }) => {
-      // Navigation station sends heading/turn deltas; we’ll simulate drift from their turn rate
       if (payload.station === 'navigation') {
-        // If you track a real turn rate, map it here; for now accept payload.state.turnRate or synthesize from heading delta
         const tr = typeof payload.state?.turnRate === 'number'
           ? payload.state.turnRate
-          : (Math.random() - 0.5) * 2; // fallback noise
-        setPilotTurnRate(tr); // -1..1-ish
+          : (Math.random() - 0.5) * 2;
+        setPilotTurnRate(tr);
       }
     };
 
@@ -302,57 +393,48 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     };
   }, [socket]);
 
-  /** ----- Selected enemy memo ----- */
   const selectedEnemy = useMemo(
     () => enemies.find(e => e.id === selectedEnemyId) ?? null,
     [enemies, selectedEnemyId]
   );
 
-  /** ----- Core update/draw loop ----- */
   useEffect(() => {
     let last = performance.now();
     let raf = 0;
 
     const tick = () => {
       const now = performance.now();
-      const dt = Math.min(0.05, (now - last) / 1000); // cap dt
+      const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
 
-      // Handle jams
       if (jamTimer > 0) setJamTimer(v => Math.max(0, v - dt));
-      // ECM knock visual decay
       if (ecmKnock > 0) setEcmKnock(v => Math.max(0, v - dt * 1.8));
 
-      // Cooling (when not jammed/overheated)
       if (!overheated && jamTimer <= 0) {
         setHeat(h => Math.max(0, h - 12 * dt));
       }
 
-      // Track stabilization: error tends to pilot turn rate if player doesn’t correct
       setTrackError(err => {
-        const target = pilotTurnRate;        // what the drift wants to be
-        const corrected = target - playerCorrection * 0.9; // your correction counters it
-        return lerp(err, corrected, 0.15);  // smooth response
+        const target = pilotTurnRate;
+        const corrected = target - playerCorrection * 0.9;
+        return lerp(err, corrected, 0.15);
       });
 
-      // Move enemies (smooth pathfinding)
       setEnemies(prev => prev.map(e => {
-        if (!e.alive && !e.wreck) return { ...e }; // dead (about to be wreck)
-        if (e.wreck) return e; // wreck stays
+        if (!e.alive && !e.wreck) return { ...e };
+        if (e.wreck) return e;
 
-        // Add waypoint system if not exists
         if (!e.waypoint) {
           e.waypoint = {
             x: Math.random() * 360,
             y: 20 + Math.random() * 70,
-            reachTime: performance.now() + (3000 + Math.random() * 4000) // 3-7 seconds
+            reachTime: performance.now() + (3000 + Math.random() * 4000)
           };
         }
 
         const now = performance.now();
         const step = e.speed * dt;
 
-        // Check if we need a new waypoint
         if (now >= e.waypoint.reachTime ||
           (Math.abs(wrapDeg(e.x - e.waypoint.x)) < 15 && Math.abs(e.y - e.waypoint.y) < 10)) {
           e.waypoint = {
@@ -362,21 +444,18 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           };
         }
 
-        // Calculate desired heading toward waypoint
         const dx = wrapDeg(e.waypoint.x - e.x);
         const dy = e.waypoint.y - e.y;
         const targetHeading = wrapDeg(Math.atan2(dx, -dy) * 180 / Math.PI);
 
-        // Smooth heading interpolation (max 45 deg/sec turn rate)
         let headingDiff = wrapDeg(targetHeading - e.heading);
         if (headingDiff > 180) headingDiff -= 360;
         if (headingDiff < -180) headingDiff += 360;
 
-        const maxTurn = 45 * dt; // degrees per frame
+        const maxTurn = 45 * dt;
         const turnAmount = Math.sign(headingDiff) * Math.min(Math.abs(headingDiff), maxTurn);
         const newHeading = wrapDeg(e.heading + turnAmount);
 
-        // Move forward in current heading
         const rad = toRad(newHeading);
         const moveX = Math.sin(rad) * step * 0.25;
         const moveY = -Math.cos(rad) * step * 0.15;
@@ -387,7 +466,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         return { ...e, x: nx, y: ny, heading: newHeading, waypoint: e.waypoint };
       }));
 
-      // Draw
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d')!;
@@ -401,23 +479,19 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     return () => cancelAnimationFrame(raf);
   }, [pilotTurnRate, playerCorrection, overheated, jamTimer, ecmKnock, selectedEnemyId, enemies, heat]);
 
-  /** ----- Drawing ----- */
   const drawRadar = (ctx: CanvasRenderingContext2D) => {
     const w = R_WIDTH, h = R_HEIGHT;
     const cx = w / 2, cy = h / 2;
     ctx.clearRect(0, 0, w, h);
 
-    // Background
     ctx.fillStyle = '#02050a';
     ctx.fillRect(0, 0, w, h);
 
-    // ECM vignette
     if (ecmKnock > 0) {
       ctx.fillStyle = `rgba(255,0,0,${0.1 * ecmKnock})`;
       ctx.fillRect(0, 0, w, h);
     }
 
-    // Radar rings
     ctx.strokeStyle = '#00ff88';
     ctx.lineWidth = 2;
     for (let r = RADAR_RADIUS; r >= 50; r -= 60) {
@@ -426,17 +500,14 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       ctx.stroke();
     }
 
-    // Crosshairs
     ctx.strokeStyle = '#00ffff';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(cx - RADAR_RADIUS, cy); ctx.lineTo(cx + RADAR_RADIUS, cy); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx, cy - RADAR_RADIUS); ctx.lineTo(cx, cy + RADAR_RADIUS); ctx.stroke();
 
-    // Player ship at center
     ctx.fillStyle = '#00ffff';
     ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
 
-    // Enemies
     enemies.forEach(enemy => {
       const angleRad = toRad(enemy.x);
       const distance = (enemy.y / 100) * RADAR_RADIUS;
@@ -446,24 +517,31 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       const isSelected = selectedEnemyId === enemy.id;
 
       if (enemy.alive) {
-        // Shield glow
         const shieldAlpha = Math.max(0.15, Math.min(0.5, enemy.shields / 200));
-        ctx.fillStyle = `rgba(0,136,255,${shieldAlpha})`;
+        let shieldColor = 'rgba(0,136,255,';
+        if (enemy.faction === 'ally') {
+          shieldColor = 'rgba(0,255,136,';
+        } else if (enemy.faction === 'neutral') {
+          shieldColor = 'rgba(255,215,0,';
+        }
+        ctx.fillStyle = `${shieldColor}${shieldAlpha})`;
         ctx.beginPath(); ctx.arc(ex, ey, 10 + enemy.size * 2, 0, Math.PI * 2); ctx.fill();
 
-        // Hull blip
-        ctx.fillStyle = isSelected ? '#ff4d4d' : '#ff2a2a';
+        let hullColor = '#ff2a2a';
+        if (enemy.faction === 'ally') {
+          hullColor = '#00ff88';
+        } else if (enemy.faction === 'neutral') {
+          hullColor = '#ffd700';
+        }
+        ctx.fillStyle = isSelected ? '#ffffff' : hullColor;
         ctx.beginPath(); ctx.arc(ex, ey, 4 + enemy.size, 0, Math.PI * 2); ctx.fill();
       } else if (enemy.wreck) {
-        // Wreck icon
         ctx.fillStyle = '#ffaa00';
         ctx.beginPath(); ctx.arc(ex, ey, 4, 0, Math.PI * 2); ctx.fill();
-        // salvage ring
         ctx.strokeStyle = 'rgba(255,170,0,0.7)';
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(ex, ey, 10, 0, Math.PI * 2); ctx.stroke();
 
-        // progress
         if (enemy.salvageProgress > 0) {
           ctx.strokeStyle = '#00ff88';
           ctx.beginPath();
@@ -472,24 +550,20 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         }
       }
 
-      // Selection box
       if (isSelected) {
         ctx.strokeStyle = '#ffff00';
         ctx.lineWidth = 2;
         ctx.strokeRect(ex - 10, ey - 10, 20, 20);
       }
 
-      // If selected & alive, render solve ring and (if good) lead indicator
       if (isSelected && enemy.alive) {
-        // Solve ring around enemy — the gunner needs to keep target inside
         ctx.strokeStyle = '#ffd700';
         ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(ex, ey, reticleTightness, 0, Math.PI * 2); ctx.stroke();
 
-        // Lead indicator (ghost blip) when solveQuality is good
         if (showLead) {
           const v = headingToVec(enemy.heading, enemy.speed);
-          const t = distance / projectileSpeed; // naive
+          const t = distance / projectileSpeed;
           const lx = ex + v.x * t * 2.0;
           const ly = ey + v.y * t * 2.0;
 
@@ -497,7 +571,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(lx, ly, 8, 0, Math.PI * 2); ctx.stroke();
 
-          // dotted line from target to lead
           ctx.setLineDash([4, 4]);
           ctx.beginPath(); ctx.moveTo(ex, ey); ctx.lineTo(lx, ly); ctx.stroke();
           ctx.setLineDash([]);
@@ -505,31 +578,21 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       }
     });
 
-    // UI overlays (heat, lock, etc.)
     drawUI(ctx);
   };
 
   const drawUI = (ctx: CanvasRenderingContext2D) => {
-    // Heat bar
     drawBar(ctx, 20, 20, 200, 12, heat / 100, '#ff4d4d', 'HEAT');
-
-    // Track error bar (adds spread)
     const track = clamp(Math.abs(trackError) / 2, 0, 1);
     drawBar(ctx, 20, 40, 200, 12, track, '#ffaa00', 'TRACK ERROR');
-
-    // Solve quality
     drawBar(ctx, 20, 60, 200, 12, solveQuality, '#00ff88', 'SOLVE');
-
-    // Missile lock
     drawBar(ctx, 20, 80, 200, 12, lockFill, locked ? '#00ff88' : '#0088ff', locked ? 'LOCKED' : 'LOCK');
 
-    // Overheat / reload cue
     if (overheated || jamTimer > 0) {
       ctx.fillStyle = '#ffea00';
       ctx.font = '12px Orbitron, monospace';
       ctx.fillText(overheated ? 'OVERHEATED — press SPACE in window!' : 'JAMMED...', 20, 110);
       if (overheated && reloadWindow) {
-        // Draw a tiny timing lane
         const x = 20, y = 120, w = 200, h = 8;
         ctx.strokeStyle = '#cccccc';
         ctx.strokeRect(x, y, w, h);
@@ -538,7 +601,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       }
     }
 
-    // Ammo & Aim labels
     ctx.fillStyle = '#9ad0ff';
     ctx.font = '12px Orbitron, monospace';
     ctx.fillText(`AMMO: ${ammo}`, 20, R_HEIGHT - 40);
@@ -565,8 +627,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     return { x: Math.cos(r) * speed * 0.8, y: Math.sin(r) * speed * 0.8 };
   };
 
-  /** ----- Solve quality update (depends on how close we keep the cursor to the selected enemy) ----- */
-  // We'll treat the "reticleOnTarget" as whether the mouse is close to the enemy's on-screen position.
   const mouseRef = useRef<{ x: number, y: number }>({ x: R_WIDTH / 2, y: R_HEIGHT / 2 });
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -603,7 +663,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     return () => clearInterval(i);
   }, [selectedEnemy, reticleTightness, solveQuality]);
 
-  /** ----- Missile lock fill based on playerFreq vs enemy.ecmFreq ----- */
   useEffect(() => {
     const t = setInterval(() => {
       const sel = selectedEnemy;
@@ -624,31 +683,26 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     return () => clearInterval(t);
   }, [playerFreq, selectedEnemy, lockFill]);
 
-  /** ----- Fire handling ----- */
   const handleFire = () => {
     if (!selectedEnemy) return;
     const target = selectedEnemy;
 
-    // Ammo constraints
     if (AMMO_DEF[ammo].requiresLock && !locked) return;
     if (ammo === 'SEEKER' && missiles <= 0) return;
     if (overheated || jamTimer > 0) return;
 
-    // Heat application
     const shotHeat = AMMO_DEF[ammo].heatPerShot;
     const newHeat = heat + shotHeat;
     setHeat(newHeat);
     if (newHeat >= 100) {
       setOverheated(true);
-      setReloadWindow({ start: 0.45, end: 0.62 }); // timing lane
+      setReloadWindow({ start: 0.45, end: 0.62 });
       return;
     }
 
-    // Compute spread from trackError & ammo
-    const baseSpread = 10; // px
+    const baseSpread = 10;
     const spread = baseSpread * AMMO_DEF[ammo].spreadMult + Math.abs(trackError) * 6;
-    // Hit chance: better with good solve & lower spread; seeker ignores most spread
-    const solveBoost = 0.35 + solveQuality * 0.65; // 0.35..1.0
+    const solveBoost = 0.35 + solveQuality * 0.65;
     const seekerIgnore = ammo === 'SEEKER' ? 0.6 : 0.0;
     const effectiveSpread = spread * (1 - seekerIgnore);
     const hitChance = clamp(solveBoost * (1.0 - effectiveSpread / 120), 0.05, 0.95);
@@ -656,25 +710,21 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     const roll = Math.random();
     const hit = roll < hitChance;
 
-    // Damage calc
     let damage = AMMO_DEF[ammo].baseDamage;
     damage *= SUBSYS_DEF[aim].dmgMult;
     let shieldDamage = 0, hullDamage = 0;
     if (hit) {
       shieldDamage = damage * AMMO_DEF[ammo].shieldMult;
-      // overflow to hull
       let remainingShield = Math.max(0, target.shields - shieldDamage);
       const shieldActuallyDealt = target.shields - remainingShield;
       const leftover = damage - shieldActuallyDealt;
       hullDamage = Math.max(0, leftover * AMMO_DEF[ammo].hullMult);
 
-      // Piercing subsystem crit
       if (AMMO_DEF[ammo].critSubsystem && Math.random() < 0.2) {
         hullDamage *= 1.5;
       }
     }
 
-    // Apply damage to selected enemy
     setEnemies(prev => prev.map(e => {
       if (e.id !== target.id) return e;
       if (!hit) return e;
@@ -687,7 +737,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
 
       const killed = newHp <= 0 && e.alive;
 
-      // Subsystem debuffs (simple visual; hook into your AI if you want)
       let speed = e.speed, heading = e.heading;
       if (aim === 'ENGINES' && hit) speed = Math.max(8, e.speed * 0.85);
       if (aim === 'WEAPONS' && hit) {/* could mark accuracy debuff */ }
@@ -705,10 +754,8 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       };
     }));
 
-    // Missiles spent
     if (ammo === 'SEEKER') setMissiles(m => Math.max(0, m - 1));
 
-    // Tell server (optional)
     socket?.emit('weapon_fired', {
       room: roomRef.current,
       targetId: target.id,
@@ -722,14 +769,12 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     });
   };
 
-  /** ----- Click selection & salvage ----- */
   const handleClickCanvas = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const cx = R_WIDTH / 2, cy = R_HEIGHT / 2;
 
-    // Find nearest enemy blip within radius
     let bestId: string | null = null;
     let bestD = 9999;
 
@@ -753,7 +798,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     if (!selectedEnemy) return;
     if (!selectedEnemy.wreck) return;
 
-    // Hold to salvage (we simulate a 2s beam)
     const id = selectedEnemy.id;
     const start = performance.now();
 
@@ -765,7 +809,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       if (progress < 1) {
         raf = requestAnimationFrame(step);
       } else {
-        // reward
         const gotMissile = Math.random() < 0.5;
         const gotSink = !gotMissile;
         if (gotMissile) setMissiles(m => m + 1);
@@ -774,28 +817,16 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       }
     };
     raf = requestAnimationFrame(step);
-
-    // If mouse up (we’ll use a global hold button), we’d cancel. For simplicity, we let it run in this demo.
   };
 
-  /** ----- Heat sink use ----- */
   const useHeatSink = () => {
     if (heatSinks <= 0) return;
     setHeat(h => Math.max(0, h - 45));
     setHeatSinks(h => Math.max(0, h - 1));
   };
 
-  /** ----- LRC HTML Mirroring State ----- */
-  const [lrcHtml, setLrcHtml] = useState<string>('');
   const lrcHostRef = useRef<HTMLDivElement | null>(null);
 
-  /** ----- Ship Store Integration for LRC Mirror ----- */
-  const [ships, setShips] = useState<Ship[]>(shipStore.getShips());
-  const [pinnedShips, setPinnedShips] = useState<Record<string, 'white' | 'red'>>(shipStore.getPinnedShips());
-  const [doublePinnedShipId, setDoublePinnedShipId] = useState<string | null>(shipStore.getDoublePinnedShipId());
-  const [currentRegion, setCurrentRegion] = useState<string>(shipStore.getCurrentRegion());
-
-  /** ----- Subscribe to Ship Store Updates ----- */
   useEffect(() => {
     if (socket) {
       const room = new URLSearchParams(window.location.search).get('room') || 'default';
@@ -811,10 +842,11 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       setCurrentRegion(shipStore.getCurrentRegion());
     });
 
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+    };
   }, []);
 
-  /** ----- Listen for LRC HTML updates from Communications Station ----- */
   useEffect(() => {
     if (!socket) return;
 
@@ -822,20 +854,16 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       const el = lrcHostRef.current;
       if (!el) return;
 
-      // stick-to-bottom behavior
       const atBottom = Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) < 4;
 
       setLrcHtml(html);
 
-      // wait for DOM to paint, then maybe scroll
       requestAnimationFrame(() => {
         if (atBottom) el.scrollTop = el.scrollHeight;
       });
     };
 
     socket.on('lrc_update', onUpdate);
-
-    // ask for a snapshot immediately
     socket.emit('lrc_request', { room: roomRef.current });
 
     return () => {
@@ -843,7 +871,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     };
   }, [socket]);
 
-  /** ----- UI ----- */
   return (
     <div style={{
       width: '100vw', height: '100vh',
@@ -851,7 +878,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       color: '#eee', fontFamily: 'Orbitron, monospace',
       display: 'grid', gridTemplateColumns: 'auto 300px 360px', gap: '16px', padding: '18px', boxSizing: 'border-box'
     }}>
-      {/* Radar Panel */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         border: '2px solid #00ffff', borderRadius: '12px', background: 'rgba(0,20,40,0.5)',
@@ -866,7 +892,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         />
       </div>
 
-      {/* Long Range Communications Panel (Mirrored from Communications Station) */}
       <div style={{
         display: 'flex', flexDirection: 'column',
         border: '2px solid #00ff88', borderRadius: '12px',
@@ -883,14 +908,12 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           LONG-RANGE COMMS (Mirror)
         </div>
 
-        {/* Ship Information from Central Store */}
         <div style={{
           fontSize: '11px',
           height: 'calc(100vh - 120px)',
           overflowY: 'auto',
           padding: '5px 8px'
         }}>
-          {/* Region Header */}
           <div style={{
             color: '#00ff88',
             fontWeight: 'bold',
@@ -902,7 +925,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             {currentRegion} Sector
           </div>
 
-          {/* Ship List */}
           {ships.length === 0 ? (
             <div style={{ color: '#666', textAlign: 'center', margin: '10px 0' }}>
               No vessels in range
@@ -949,7 +971,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             </div>
           )}
 
-          {/* Mirrored HTML from Communications Station */}
           {lrcHtml && (
             <div style={{
               marginTop: '10px',
@@ -973,20 +994,17 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         </div>
       </div>
 
-      {/* Controls Panel */}
       <div style={{
         border: '2px solid #00ff88', borderRadius: '12px', padding: '14px',
         background: 'rgba(0, 0, 0, 0.5)', overflowY: 'auto', maxHeight: '100vh'
       }}>
         <h2 style={{ margin: '0 0 8px', color: '#00ff88', textShadow: '0 0 8px #00ff88' }}>WEAPONS CONTROL</h2>
 
-        {/* Target & status */}
         <div style={{ fontSize: 12, color: '#a0f7ff', marginBottom: 10 }}>
           Target: <b style={{ color: '#fff' }}>{selectedEnemy ? selectedEnemy.id : 'None'}</b><br />
           Status: {overheated ? <span style={{ color: '#ffea00' }}>OVERHEATED</span> : jamTimer > 0 ? <span style={{ color: '#ffaa00' }}>JAMMED</span> : <span style={{ color: '#00ff88' }}>READY</span>}
         </div>
 
-        {/* Ammo Selector */}
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Ammo</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -1006,7 +1024,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </div>
         </div>
 
-        {/* Aim Selector */}
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Subsystem Aim</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
@@ -1026,7 +1043,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </div>
         </div>
 
-        {/* Missile Lock Dial */}
         <div style={{ margin: '12px 0' }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Signal Match (Missile Lock)</div>
           <input
@@ -1045,7 +1061,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </div>
         </div>
 
-        {/* Heat Sink */}
         <div style={{ margin: '10px 0' }}>
           <button
             onClick={useHeatSink}
@@ -1060,7 +1075,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </button>
         </div>
 
-        {/* Fire Buttons */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
           <button
             onClick={handleFire}
@@ -1085,7 +1099,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </button>
         </div>
 
-        {/* Help */}
         <div style={{ marginTop: 12, fontSize: 11, lineHeight: 1.35, color: '#a7c9ff' }}>
           <div>Tips:</div>
           <ul style={{ margin: '6px 0 0 16px' }}>
@@ -1097,7 +1110,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </ul>
         </div>
 
-        {/* Enemy list (debug quick select) */}
         <div style={{ marginTop: 12 }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Contacts</div>
           <div style={{ maxHeight: 160, overflow: 'auto', paddingRight: 6 }}>
@@ -1127,7 +1139,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             ))}
           </div>
         </div>
-
       </div>
     </div>
   );
