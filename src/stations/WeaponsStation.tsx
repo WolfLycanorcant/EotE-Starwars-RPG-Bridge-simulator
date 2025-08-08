@@ -15,8 +15,6 @@ interface WeaponsState {
     scanMode: 'passive' | 'active' | 'deep';
   };
   weapons: {
-    primaryWeapons: WeaponSystem[];
-    secondaryWeapons: WeaponSystem[];
     torpedoes: TorpedoSystem;
     powerLevel: number;
     heatLevel: number;
@@ -918,8 +916,6 @@ const WeaponsStation: React.FC = () => {
       scanMode: 'passive'
     },
     weapons: {
-      primaryWeapons: [],
-      secondaryWeapons: [],
       torpedoes: {
         protonTorpedoes: 0,
         concussionMissiles: 0,
@@ -955,8 +951,6 @@ const WeaponsStation: React.FC = () => {
 
   // Drag and drop state
   const [modulePositions, setModulePositions] = useState<{ [key: string]: ModulePosition }>({
-    primaryWeapons: { x: 50, y: 100, zIndex: 1 },
-    secondaryWeapons: { x: 50, y: 350, zIndex: 1 },
     torpedoPanel: { x: 50, y: 600, zIndex: 1 },
     targetingDisplay: { x: window.innerWidth / 2 - 200, y: 150, zIndex: 1 },
     shieldDisplay: { x: window.innerWidth - 350, y: 100, zIndex: 1 },
@@ -992,66 +986,7 @@ const WeaponsStation: React.FC = () => {
 
 
 
-  // Weapon assignment functions
-  const assignToPrimaryWeapons = (moduleId: string) => {
-    const module = dynamicWeaponModules.find(m => m.id === moduleId);
-    if (!module) return;
 
-    const newWeapon: WeaponSystem = {
-      id: `primary_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: module.weaponData.name,
-      type: module.weaponData.type.toLowerCase() as 'laser' | 'ion' | 'plasma' | 'particle',
-      damage: module.weaponData.damage,
-      range: parseRange(module.weaponData.range),
-      accuracy: 85 + (module.weaponData.qualities.find(q => q.startsWith('ACCURATE')) ?
-        parseInt(module.weaponData.qualities.find(q => q.startsWith('ACCURATE'))?.split(' ')[1] || '0') * 5 : 0),
-      chargeLevel: 100,
-      cooldown: 0,
-      ammunition: module.ammunition,
-      maxAmmo: module.maxAmmo,
-      status: 'ready'
-    };
-
-    setWeaponsState(prev => ({
-      ...prev,
-      weapons: {
-        ...prev.weapons,
-        primaryWeapons: [...prev.weapons.primaryWeapons, newWeapon]
-      }
-    }));
-
-    console.log(`Assigned ${module.weaponData.name} to Primary Weapons`);
-  };
-
-  const assignToSecondaryWeapons = (moduleId: string) => {
-    const module = dynamicWeaponModules.find(m => m.id === moduleId);
-    if (!module) return;
-
-    const newWeapon: WeaponSystem = {
-      id: `secondary_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      name: module.weaponData.name,
-      type: module.weaponData.type.toLowerCase() as 'laser' | 'ion' | 'plasma' | 'particle',
-      damage: module.weaponData.damage,
-      range: parseRange(module.weaponData.range),
-      accuracy: 85 + (module.weaponData.qualities.find(q => q.startsWith('ACCURATE')) ?
-        parseInt(module.weaponData.qualities.find(q => q.startsWith('ACCURATE'))?.split(' ')[1] || '0') * 5 : 0),
-      chargeLevel: 100,
-      cooldown: 0,
-      ammunition: module.ammunition,
-      maxAmmo: module.maxAmmo,
-      status: 'ready'
-    };
-
-    setWeaponsState(prev => ({
-      ...prev,
-      weapons: {
-        ...prev.weapons,
-        secondaryWeapons: [...prev.weapons.secondaryWeapons, newWeapon]
-      }
-    }));
-
-    console.log(`Assigned ${module.weaponData.name} to Secondary Weapons`);
-  };
 
   // Helper function to parse range string to number
   const parseRange = (rangeStr: string): number => {
@@ -1065,87 +1000,9 @@ const WeaponsStation: React.FC = () => {
     }
   };
 
-  // Fire functions for primary and secondary weapons
-  const firePrimaryWeapon = (weaponId: string) => {
-    // Find the weapon being fired to create projectile effect
-    const weaponToFire = weaponsState.weapons.primaryWeapons.find(w => w.id === weaponId);
 
-    setWeaponsState(prev => ({
-      ...prev,
-      weapons: {
-        ...prev.weapons,
-        primaryWeapons: prev.weapons.primaryWeapons.map(weapon =>
-          weapon.id === weaponId && weapon.status === 'ready'
-            ? {
-              ...weapon,
-              status: 'cooling',
-              cooldown: 3,
-              chargeLevel: Math.max(0, weapon.chargeLevel - 25),
-              ammunition: weapon.ammunition > 0 ? weapon.ammunition - 1 : weapon.ammunition
-            }
-            : weapon
-        ),
-        heatLevel: Math.min(100, prev.weapons.heatLevel + 5)
-      }
-    }));
 
-    // Create projectile effect
-    if (weaponToFire) {
-      createProjectileEffect(weaponToFire.name, weaponToFire.type);
-    }
 
-    emitAction('fire_primary_weapon', { weaponId });
-  };
-
-  const fireSecondaryWeapon = (weaponId: string) => {
-    // Find the weapon being fired to create projectile effect
-    const weaponToFire = weaponsState.weapons.secondaryWeapons.find(w => w.id === weaponId);
-
-    setWeaponsState(prev => ({
-      ...prev,
-      weapons: {
-        ...prev.weapons,
-        secondaryWeapons: prev.weapons.secondaryWeapons.map(weapon =>
-          weapon.id === weaponId && weapon.status === 'ready'
-            ? {
-              ...weapon,
-              status: 'cooling',
-              cooldown: 3,
-              ammunition: weapon.ammunition > 0 ? weapon.ammunition - 1 : weapon.ammunition
-            }
-            : weapon
-        ),
-        heatLevel: Math.min(100, prev.weapons.heatLevel + 5)
-      }
-    }));
-
-    // Create projectile effect
-    if (weaponToFire) {
-      createProjectileEffect(weaponToFire.name, weaponToFire.type);
-    }
-
-    emitAction('fire_secondary_weapon', { weaponId });
-  };
-
-  // Clear all weapons from Primary and Secondary modules
-  const clearAllAssignedWeapons = () => {
-    const confirmClear = window.confirm(
-      'Are you sure you want to remove ALL weapons from Primary and Secondary weapon modules? This action cannot be undone.'
-    );
-
-    if (confirmClear) {
-      setWeaponsState(prev => ({
-        ...prev,
-        weapons: {
-          ...prev.weapons,
-          primaryWeapons: [],
-          secondaryWeapons: []
-        }
-      }));
-      console.log('Cleared all weapons from Primary and Secondary modules');
-      emitAction('clear_all_assigned_weapons', {});
-    }
-  };
 
   // Projectile effect functions
   const determineProjectileType = (weaponName: string, weaponType: string): 'beam' | 'missile' | 'grenade' | 'torpedo' => {
@@ -1749,37 +1606,7 @@ const WeaponsStation: React.FC = () => {
       setWeaponsState(prev => {
         const newState = { ...prev };
 
-        // Primary weapons cooling (cooldown only, no charge recovery)
-        newState.weapons.primaryWeapons = prev.weapons.primaryWeapons.map(weapon => {
-          const newWeapon = { ...weapon };
 
-          // Cooldown reduction (0.1 per 100ms = 1 per second)
-          if (newWeapon.cooldown > 0) {
-            newWeapon.cooldown = Math.max(0, newWeapon.cooldown - 0.1);
-            if (newWeapon.cooldown === 0 && newWeapon.status === 'cooling') {
-              newWeapon.status = 'ready';
-            }
-          }
-
-          return newWeapon;
-        });
-
-        // Secondary weapons cooling (cooldown only, no charge recovery)
-        newState.weapons.secondaryWeapons = prev.weapons.secondaryWeapons.map(weapon => {
-          const newWeapon = { ...weapon };
-
-          // Cooldown reduction (0.1 per 100ms = 1 per second)
-          if (newWeapon.cooldown > 0) {
-            console.log(`🔧 Secondary Weapon ${newWeapon.name} cooling: ${newWeapon.cooldown.toFixed(1)} -> ${Math.max(0, newWeapon.cooldown - 0.1).toFixed(1)}`);
-            newWeapon.cooldown = Math.max(0, newWeapon.cooldown - 0.1);
-            if (newWeapon.cooldown === 0 && newWeapon.status === 'cooling') {
-              console.log(`✅ Secondary Weapon ${newWeapon.name} ready!`);
-              newWeapon.status = 'ready';
-            }
-          }
-
-          return newWeapon;
-        });
 
         // Global heat system cooling
         if (prev.weapons.heatLevel > 0.1) {
@@ -1821,48 +1648,7 @@ const WeaponsStation: React.FC = () => {
     }
   };
 
-  const firePrimaryWeapons = () => {
-    if (weaponsState.targeting.currentTarget && weaponsState.targeting.lockStatus === 'locked') {
-      setWeaponsState(prev => ({
-        ...prev,
-        weapons: {
-          ...prev.weapons,
-          primaryWeapons: prev.weapons.primaryWeapons.map(weapon => ({
-            ...weapon,
-            cooldown: 3,
-            status: 'cooling'
-          })),
-          heatLevel: Math.min(100, prev.weapons.heatLevel + 15)
-        }
-      }));
 
-      emitAction('fire_primary_weapons', { targetId: weaponsState.targeting.currentTarget.id });
-
-      if (audioRef.current) {
-        audioRef.current.play().catch(e => console.log('Audio play failed:', e));
-      }
-    }
-  };
-
-  const fireSecondaryWeapons = () => {
-    if (weaponsState.targeting.currentTarget && weaponsState.targeting.lockStatus === 'locked') {
-      setWeaponsState(prev => ({
-        ...prev,
-        weapons: {
-          ...prev.weapons,
-          secondaryWeapons: prev.weapons.secondaryWeapons.map(weapon => ({
-            ...weapon,
-            cooldown: 5,
-            ammunition: Math.max(0, weapon.ammunition - 1),
-            status: 'cooling'
-          })),
-          heatLevel: Math.min(100, prev.weapons.heatLevel + 25)
-        }
-      }));
-
-      emitAction('fire_secondary_weapons', { targetId: weaponsState.targeting.currentTarget.id });
-    }
-  };
 
   const fireTorpedo = () => {
     const torpedoType = weaponsState.weapons.torpedoes.selectedType;
@@ -1938,6 +1724,10 @@ const WeaponsStation: React.FC = () => {
 
     emitAction('adjust_shields', { balance: nextBalance });
   };
+
+  function clearAllAssignedWeapons(event: MouseEvent<HTMLButtonElement, MouseEvent>): void {
+    throw new Error('Function not implemented.');
+  }
 
   return (
     <Container onClick={enableAudio}>
@@ -2036,21 +1826,7 @@ const WeaponsStation: React.FC = () => {
                     🗑️ Remove Module
                   </RemoveButton>
 
-                  <div style={{ margin: '15px 0', borderTop: '1px solid var(--weapon-blue)', paddingTop: '15px' }}>
-                    <DropdownLabel style={{ fontSize: '0.8em', color: 'var(--weapon-orange)' }}>
-                      Clear Assigned Weapons
-                    </DropdownLabel>
-                    <RemoveButton
-                      onClick={clearAllAssignedWeapons}
-                      style={{
-                        background: 'var(--weapon-red)',
-                        fontSize: '0.9em',
-                        padding: '8px'
-                      }}
-                    >
-                      💥 CLEAR ALL PRIMARY & SECONDARY
-                    </RemoveButton>
-                  </div>
+
                 </DropdownContent>
               </>
             )}
@@ -2256,97 +2032,13 @@ const WeaponsStation: React.FC = () => {
                 )}
               </div>
 
-              {/* Assignment Buttons */}
-              <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                <FireButton
-                  $variant="primary"
-                  onClick={() => assignToPrimaryWeapons(module.id)}
-                  style={{ fontSize: '0.7em', padding: '6px 10px', flex: '1' }}
-                >
-                  ➤ PRIMARY
-                </FireButton>
-                <FireButton
-                  $variant="secondary"
-                  onClick={() => assignToSecondaryWeapons(module.id)}
-                  style={{ fontSize: '0.7em', padding: '6px 10px', flex: '1' }}
-                >
-                  ➤ SECONDARY
-                </FireButton>
-              </div>
+
             </WeaponCard>
           </ModuleWrapper>
         </DraggableModule>
       ))}
 
-      {/* Draggable Primary Weapons Module */}
-      <DraggableModule
-        $position={modulePositions.primaryWeapons}
-        $isDragging={dragState.primaryWeapons?.isDragging || false}
-      >
-        <ModuleWrapper>
-          <DragHandle onMouseDown={(e) => handleMouseDown(e, 'primaryWeapons')} />
-          <WeaponCard>
-            <h3>Primary Weapons</h3>
-            {weaponsState.weapons.primaryWeapons.map(weapon => (
-              <div key={weapon.id} style={{ marginBottom: '15px' }}>
-                <div style={{ color: 'var(--weapon-green)', fontWeight: 'bold' }}>
-                  {weapon.name}
-                </div>
-                <WeaponStatus $status={weapon.status}>
-                  {weapon.status.toUpperCase()}
-                </WeaponStatus>
-                <ChargeBar $level={weapon.cooldown > 0 ? (3 - weapon.cooldown) / 3 * 100 : 100} $maxLevel={100} />
-                <div style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '10px' }}>
-                  Damage: {weapon.damage} | Range: {weapon.range}m | Accuracy: {weapon.accuracy}%
-                </div>
-                <FireButton
-                  $variant="primary"
-                  onClick={() => firePrimaryWeapon(weapon.id)}
-                  disabled={weapon.status !== 'ready' || (weapon.ammunition !== -1 && weapon.ammunition <= 0)}
-                  style={{ fontSize: '0.8em', padding: '6px 12px', width: '100%' }}
-                >
-                  🔥 FIRE PRIMARY
-                </FireButton>
-              </div>
-            ))}
-          </WeaponCard>
-        </ModuleWrapper>
-      </DraggableModule>
 
-      {/* Draggable Secondary Weapons Module */}
-      <DraggableModule
-        $position={modulePositions.secondaryWeapons}
-        $isDragging={dragState.secondaryWeapons?.isDragging || false}
-      >
-        <ModuleWrapper>
-          <DragHandle onMouseDown={(e) => handleMouseDown(e, 'secondaryWeapons')} />
-          <WeaponCard>
-            <h3>Secondary Weapons</h3>
-            {weaponsState.weapons.secondaryWeapons.map(weapon => (
-              <div key={weapon.id} style={{ marginBottom: '15px' }}>
-                <div style={{ color: 'var(--weapon-yellow)', fontWeight: 'bold' }}>
-                  {weapon.name}
-                </div>
-                <WeaponStatus $status={weapon.status}>
-                  {weapon.status.toUpperCase()}
-                </WeaponStatus>
-                <ChargeBar $level={weapon.cooldown > 0 ? (3 - weapon.cooldown) / 3 * 100 : 100} $maxLevel={100} />
-                <div style={{ fontSize: '0.9em', color: '#ccc', marginBottom: '10px' }}>
-                  Ammo: {weapon.ammunition}/{weapon.maxAmmo}
-                </div>
-                <FireButton
-                  $variant="secondary"
-                  onClick={() => fireSecondaryWeapon(weapon.id)}
-                  disabled={weapon.status !== 'ready' || (weapon.ammunition !== -1 && weapon.ammunition <= 0)}
-                  style={{ fontSize: '0.8em', padding: '6px 12px', width: '100%' }}
-                >
-                  🔥 FIRE SECONDARY
-                </FireButton>
-              </div>
-            ))}
-          </WeaponCard>
-        </ModuleWrapper>
-      </DraggableModule>
 
       {/* Draggable Torpedo Panel Module */}
       <DraggableModule
@@ -2586,6 +2278,57 @@ const WeaponsStation: React.FC = () => {
       </DraggableModule>
 
 
+
+      {/* Comprehensive System Status Banner */}
+      <div style={{
+        position: 'fixed',
+        top: '10px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        background: 'var(--panel-bg)',
+        border: '2px solid var(--weapon-blue)',
+        borderRadius: '8px',
+        padding: '8px 16px',
+        display: 'flex',
+        gap: '20px',
+        fontSize: '0.9em',
+        fontFamily: 'Orbitron, monospace',
+        zIndex: 1500,
+        backdropFilter: 'blur(10px)'
+      }}>
+        <div style={{ color: 'var(--weapon-blue)' }}>
+          🎯 Targets: {weaponsState.targeting.availableTargets.length}
+        </div>
+        <div style={{ color: 'var(--weapon-green)' }}>
+          ⚡ Weapons: {dynamicWeaponModules.length}
+        </div>
+        <div style={{
+          color: weaponsState.targeting.lockStatus === 'locked' ? 'var(--weapon-green)' : 'var(--weapon-orange)'
+        }}>
+          🔒 Lock: {weaponsState.targeting.lockStatus.toUpperCase()}
+        </div>
+        <div style={{
+          color: (() => {
+            if (dynamicWeaponModules.length === 0) return 'var(--weapon-blue)';
+            const totalCurrentHeat = dynamicWeaponModules.reduce((sum, module) => sum + module.heatLevel, 0);
+            const totalMaxHeat = dynamicWeaponModules.reduce((sum, module) => sum + module.maxHeat, 0);
+            const avgHeatPct = totalMaxHeat > 0 ? (totalCurrentHeat / totalMaxHeat) * 100 : 0;
+            return avgHeatPct >= 80 ? 'var(--weapon-red)' : avgHeatPct >= 60 ? 'var(--weapon-orange)' : 'var(--weapon-green)';
+          })()
+        }}>
+          🔥 Heat: {(() => {
+            if (dynamicWeaponModules.length === 0) return '0%';
+            const totalCurrentHeat = dynamicWeaponModules.reduce((sum, module) => sum + module.heatLevel, 0);
+            const totalMaxHeat = dynamicWeaponModules.reduce((sum, module) => sum + module.maxHeat, 0);
+            return totalMaxHeat > 0 ? `${((totalCurrentHeat / totalMaxHeat) * 100).toFixed(0)}%` : '0%';
+          })()}
+        </div>
+        <div style={{
+          color: weaponsState.combatStatus === 'engaged' ? 'var(--weapon-red)' : 'var(--weapon-yellow)'
+        }}>
+          ⚔️ Status: {weaponsState.combatStatus.toUpperCase()}
+        </div>
+      </div>
 
       {/* Hidden audio element */}
       <audio ref={audioRef} preload="auto">
