@@ -33,6 +33,8 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
   // Real-time communication state
   const [currentSignalStrength, setCurrentSignalStrength] = useState(85);
   const [currentInterference, setCurrentInterference] = useState(15);
+  const [baseSignalStrength, setBaseSignalStrength] = useState(85);
+  const [baseInterference, setBaseInterference] = useState(15);
   const [currentFrequency, setCurrentFrequency] = useState(121.5);
   const [messageQueue, setMessageQueue] = useState<any[]>([]);
   const [currentAnalysis, setCurrentAnalysis] = useState('normal');
@@ -135,6 +137,26 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       }
     };
   }, [emergencyBeaconActive]);
+
+  // Signal strength and interference fluctuation effect
+  useEffect(() => {
+    const fluctuationInterval = setInterval(() => {
+      // Signal strength fluctuation (±1.5 points around base value)
+      const signalChange = (Math.random() - 0.5) * 3;
+      const newSignalStrength = Math.max(0, Math.min(100, baseSignalStrength + signalChange));
+      
+      // Interference fluctuation (±1 point around base value)
+      const interferenceChange = (Math.random() - 0.5) * 2;
+      const newInterference = Math.max(0, Math.min(100, baseInterference + interferenceChange));
+      
+      setCurrentSignalStrength(Math.round(newSignalStrength));
+      setCurrentInterference(Math.round(newInterference));
+    }, 1000); // Update every second
+
+    return () => {
+      clearInterval(fluctuationInterval);
+    };
+  }, [baseSignalStrength, baseInterference]);
 
   // Moff names array (sample from the 1024 lines in moff_names_with_numbers.txt)
   const moffNamesArray = [
@@ -289,12 +311,14 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       switch (data.type) {
         case 'signal_strength_update':
           console.log('📶 Updating signal strength to:', data.value);
+          setBaseSignalStrength(data.value);
           setCurrentSignalStrength(data.value);
           // Also update parent component
           onPlayerAction('set_signal_strength', data.value);
           break;
         case 'interference_update':
           console.log('📡 Updating interference to:', data.value);
+          setBaseInterference(data.value);
           setCurrentInterference(data.value);
           // Also update parent component
           onPlayerAction('set_interference', data.value);
@@ -1126,7 +1150,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
           LONG RANGE COMMS   {ships.length} Ships in the Area
           <br />
           <span style={{ fontSize: '0.7em', color: '#888', fontWeight: 'normal' }}>
-            {currentRegion} (λ={calculateShipCount().lambda.toFixed(1)} arrivals/interval)
+            {currentRegion}
           </span>
         </h3>
         <div style={{
@@ -1247,6 +1271,34 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
             ))
           )}
         </div>
+        
+        {/* Double-pinned ship information display */}
+        {doublePinnedShipId && (() => {
+          const doublePinnedShip = ships.find(ship => ship.id === doublePinnedShipId);
+          return doublePinnedShip ? (
+            <div style={{
+              marginTop: '10px',
+              marginBottom: '15px',
+              padding: '8px',
+              border: '1px solid rgb(255, 0, 64)',
+              borderRadius: '4px',
+              backgroundColor: 'rgba(255, 0, 0, 0.1)'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>ID:</span>
+                <span style={{ color: 'rgb(255, 136, 0)' }}>{doublePinnedShip.id.split('-')[0]}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                <span>Designation:</span>
+                <span style={{ color: 'rgb(255, 136, 0)' }}>{doublePinnedShip.designation || 'Undesignated'}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>Status:</span>
+                <span style={{ color: 'rgb(0, 255, 136)' }}>{doublePinnedShip.status}</span>
+              </div>
+            </div>
+          ) : null;
+        })()}
       </div>
 
       {/* Signal Analysis */}
@@ -1493,82 +1545,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
         )}
       </div>
 
-      {/* Queueing Metrics Panel - spans all three columns */}
-      <div style={{ ...panelStyle, gridColumn: '1 / -1', height: '180px' }}>
-        <h3 style={panelTitleStyle}>QUEUEING THEORY METRICS</h3>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
-          gap: '15px',
-          fontSize: '11px',
-          height: '100%'
-        }}>
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '10px',
-            borderRadius: '4px',
-            border: '1px solid #004444'
-          }}>
-            <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>CURRENT STATE</div>
-            <div>Ships in Area: <span style={{ color: '#00ff00' }}>{ships.length}</span></div>
-            <div>Active Ships: <span style={{ color: '#00ff00' }}>{ships.filter(s => s.status === 'Active').length}</span></div>
-            <div>Inactive Ships: <span style={{ color: '#ffff00' }}>{ships.filter(s => s.status === 'Inactive').length}</span></div>
-          </div>
 
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '10px',
-            borderRadius: '4px',
-            border: '1px solid #004444'
-          }}>
-            <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>ARRIVAL RATES</div>
-            <div>Arrival Rate (λ): <span style={{ color: '#00ff00' }}>{calculateShipCount().lambda.toFixed(1)}/interval</span></div>
-            <div>Target Count: <span style={{ color: '#ffff00' }}>{calculateShipCount().target}</span></div>
-            <div>Region: <span style={{ color: '#80d0ff' }}>{currentRegion}</span></div>
-          </div>
-
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '10px',
-            borderRadius: '4px',
-            border: '1px solid #004444'
-          }}>
-            <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>SPACE SERVICE RATES</div>
-            <div>Transient (μ₁): <span style={{ color: '#ff8800' }}>{(ships.filter(s => s.type === 'transient').length * 0.3).toFixed(1)}/interval</span></div>
-            <div>Regular (μ₂): <span style={{ color: '#ff8800' }}>{(ships.filter(s => s.type === 'regular').length * 0.1).toFixed(1)}/interval</span></div>
-            <div>Persistent (μ₃): <span style={{ color: '#ff8800' }}>{(ships.filter(s => s.type === 'persistent').length * 0.01).toFixed(1)}/interval</span></div>
-          </div>
-
-          <div style={{
-            background: 'rgba(0, 0, 0, 0.4)',
-            padding: '10px',
-            borderRadius: '4px',
-            border: '1px solid #004444'
-          }}>
-            <div style={{ color: '#00ffff', fontWeight: 'bold', marginBottom: '8px' }}>SYSTEM METRICS</div>
-            <div>Total Service Rate: <span style={{ color: '#ff8800' }}>{(
-              ships.filter(s => s.type === 'transient').length * 0.3 +
-              ships.filter(s => s.type === 'regular').length * 0.1 +
-              ships.filter(s => s.type === 'persistent').length * 0.01
-            ).toFixed(1)}/interval</span></div>
-            <div>Utilization (ρ): <span style={{
-              color: (() => {
-                const totalServiceRate = ships.filter(s => s.type === 'transient').length * 0.3 +
-                  ships.filter(s => s.type === 'regular').length * 0.1 +
-                  ships.filter(s => s.type === 'persistent').length * 0.01;
-                const utilization = totalServiceRate > 0 ? calculateShipCount().lambda / totalServiceRate : 0;
-                return utilization > 0.8 ? '#ff0000' : utilization > 0.6 ? '#ffff00' : '#00ff00';
-              })()
-            }}>{(() => {
-              const totalServiceRate = ships.filter(s => s.type === 'transient').length * 0.3 +
-                ships.filter(s => s.type === 'regular').length * 0.1 +
-                ships.filter(s => s.type === 'persistent').length * 0.01;
-              return totalServiceRate > 0 ? (calculateShipCount().lambda / totalServiceRate).toFixed(2) : '0.00';
-            })()}</span></div>
-            <div>Model: <span style={{ color: '#80d0ff' }}>M/G/∞</span></div>
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
