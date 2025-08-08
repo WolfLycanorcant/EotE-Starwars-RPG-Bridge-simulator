@@ -2497,6 +2497,95 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   Strip All Weapons
                 </EmitRed>
               </div>
+
+              {/* Enemy Spawning Controls */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                border: '1px solid var(--gm-red)', 
+                borderRadius: '4px',
+                backgroundColor: 'rgba(255, 0, 64, 0.1)'
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-red)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  ENEMY SPAWNING:
+                </div>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                  <EmitButton onClick={() => {
+                    const enemyId = `enemy-${Date.now()}`;
+                    sendBroadcast('spawn_enemy_ship', {
+                      id: enemyId,
+                      x: Math.random() * 360,
+                      y: 60 + Math.random() * 30,
+                      heading: Math.random() * 360,
+                      speed: 25 + Math.random() * 30,
+                      size: 1 + Math.random() * 1.5,
+                      hp: 100,
+                      shields: 60,
+                      ecmFreq: Math.floor(Math.random() * 1000)
+                    });
+                  }}>
+                    Spawn Fighter
+                  </EmitButton>
+                  
+                  <EmitButton onClick={() => {
+                    const enemyId = `cruiser-${Date.now()}`;
+                    sendBroadcast('spawn_enemy_ship', {
+                      id: enemyId,
+                      x: Math.random() * 360,
+                      y: 50 + Math.random() * 25,
+                      heading: Math.random() * 360,
+                      speed: 15 + Math.random() * 20,
+                      size: 2 + Math.random() * 1,
+                      hp: 200,
+                      shields: 120,
+                      ecmFreq: Math.floor(Math.random() * 1000)
+                    });
+                  }}>
+                    Spawn Cruiser
+                  </EmitButton>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                  <EmitButton onClick={() => {
+                    sendBroadcast('wave_spawn', {
+                      count: 3,
+                      ecmFreqs: Array.from({ length: 3 }, () => Math.floor(Math.random() * 1000))
+                    });
+                  }}>
+                    Spawn Wave (3)
+                  </EmitButton>
+                  
+                  <EmitRed onClick={() => {
+                    const bossId = `boss-${Date.now()}`;
+                    sendBroadcast('boss_spawn', {
+                      id: bossId,
+                      ecmFreq: Math.floor(Math.random() * 1000)
+                    });
+                  }}>
+                    Spawn Boss
+                  </EmitRed>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  <EmitButton onClick={() => {
+                    sendBroadcast('ecm_burst', {});
+                  }}>
+                    ECM Burst
+                  </EmitButton>
+                  
+                  <EmitRed onClick={() => {
+                    sendBroadcast('clear_all_enemies', {});
+                  }}>
+                    Clear All
+                  </EmitRed>
+                </div>
+              </div>
             </>
           )}
         </Panel>

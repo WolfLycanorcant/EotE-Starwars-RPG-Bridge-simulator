@@ -1,17 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Socket } from 'socket.io-client';
 import { GameState } from '../types';
-
-// Add this type definition with group synchronization support
-type Ship = {
-  id: string;
-  designation: string | null;
-  status: 'Active' | 'Inactive';
-  entryTime: number;
-  type: 'transient' | 'regular' | 'persistent';
-  age: number;
-  groupId?: string;  // New property for convoy behavior
-};
+import { shipStore, Ship } from '../stores/shipStore';
 
 interface CommunicationsStationProps {
   gameState: GameState;
@@ -25,10 +15,6 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
   const [messagePriority, setMessagePriority] = useState<'low' | 'normal' | 'high' | 'emergency'>('normal');
 
   // Helper function for logging socket emissions
-  const emitWithLogging = (eventType: string, data: any) => {
-    console.log(`📡 Communications Station emitting ${eventType}:`, data);
-    socket?.emit(eventType, data);
-  };
 
   // Real-time communication state
   const [currentSignalStrength, setCurrentSignalStrength] = useState(85);
@@ -41,11 +27,9 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
   const [initialMessagesSent, setInitialMessagesSent] = useState(false);
 
 
-  // Add ship state and management after existing state declarations
-  const [ships, setShips] = useState<Ship[]>([]);
-
-  // Add region state after existing state declarations
-  const [currentRegion, setCurrentRegion] = useState<'Core Worlds' | 'Colonies' | 'Inner Rim' | 'Mid Rim' | 'Outer Rim' | 'Wild Space' | 'Unknown Regions'>('Core Worlds');
+  // Use central ship store instead of local state
+  const [ships, setShips] = useState<Ship[]>(shipStore.getShips());
+  const [currentRegion, setCurrentRegion] = useState<'Core Worlds' | 'Colonies' | 'Inner Rim' | 'Mid Rim' | 'Outer Rim' | 'Wild Space' | 'Unknown Regions'>(shipStore.getCurrentRegion() as any);
 
   // Emergency beacon state and flashing effect
   const [emergencyBeaconActive, setEmergencyBeaconActive] = useState(false);
@@ -57,15 +41,114 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [fastForwardAnalysis, setFastForwardAnalysis] = useState(false);
-  const [pinnedShips, setPinnedShips] = useState<Record<string, 'white' | 'red'>>({});
-  const [doublePinnedShipId, setDoublePinnedShipId] = useState<string | null>(null);
+  const [pinnedShips, setPinnedShips] = useState<Record<string, 'white' | 'red'>>(shipStore.getPinnedShips());
+  const [doublePinnedShipId, setDoublePinnedShipId] = useState<string | null>(shipStore.getDoublePinnedShipId());
 
   // Add ref for isAnalysing to avoid stale closure in event listener
   const isAnalysingRef = useRef(isAnalysing);
+  
+  // LRC streaming ref
+  const lrcRef = useRef<HTMLDivElement | null>(null);
+  const roomRef = useRef<string>('default');
 
   useEffect(() => {
     isAnalysingRef.current = isAnalysing;
   }, [isAnalysing]);
+
+  // Function to convert ships to targeting data and emit to weapons station
+  const emitTargetingData = useCallback((currentShips: Ship[]) => {
+    // Get top 5 ships (prioritize pinned ships, then by age/activity)
+    const pinned = currentShips.filter(s => pinnedShips[s.id]);
+    const unpinned = currentShips.filter(s => !pinnedShips[s.id]);
+    const sortedShips = [...pinned, ...unpinned].slice(0, 5);
+
+    // Get double-pinned ship details if exists
+    const doublePinnedShip = doublePinnedShipId ?
+      currentShips.find(s => s.id === doublePinnedShipId) : null;
+
+    // Convert ships to targeting data
+    const targetingData = sortedShips.map((ship, index) => {
+      // Determine faction based on ship characteristics
+      const faction = pinnedShips[ship.id] === 'red' ? 'hostile' :
+        pinnedShips[ship.id] === 'white' ? 'friendly' :
+          ship.designation ? 'neutral' : 'unknown';
+
+      // Determine threat level based on ship status and pin state
+      const threat = pinnedShips[ship.id] === 'red' ? 'critical' :
+        ship.status === 'Active' && ship.designation ? 'medium' :
+          ship.status === 'Active' ? 'high' : 'low';
+
+      // Determine size based on designation or type
+      const size = ship.designation?.toLowerCase().includes('destroyer') ||
+        ship.designation?.toLowerCase().includes('cruiser') ? 'capital' :
+        ship.designation?.toLowerCase().includes('frigate') ||
+          ship.designation?.toLowerCase().includes('corvette') ? 'large' :
+          ship.designation?.toLowerCase().includes('fighter') ||
+            ship.designation?.toLowerCase().includes('interceptor') ? 'small' : 'medium';
+
+      // Generate realistic position data (spread around the area)
+      const angle = (index * 72 + Math.random() * 30) * (Math.PI / 180); // Spread evenly with some randomness
+      const distance = 1000 + Math.random() * 7000; // 1-8km range
+      const bearing = (angle * 180 / Math.PI) % 360;
+
+      return {
+        id: ship.id,
+        type: 'ship' as const,
+        position: {
+          x: Math.cos(angle) * distance,
+          y: Math.sin(angle) * distance,
+          z: (Math.random() - 0.5) * 200
+        },
+        velocity: {
+          x: (Math.random() - 0.5) * 50,
+          y: (Math.random() - 0.5) * 50,
+          z: (Math.random() - 0.5) * 10
+        },
+        size,
+        threat,
+        shields: ship.status === 'Active' ? Math.floor(Math.random() * 100) : 0,
+        hull: ship.status === 'Active' ? Math.floor(Math.random() * 100) : Math.floor(Math.random() * 50),
+        distance: Math.floor(distance),
+        bearing: Math.floor(bearing),
+        signature: Math.floor(Math.random() * 100),
+        classification: ship.designation || `UNKNOWN-${ship.id.split('-')[0].toUpperCase()}`,
+        faction,
+        shipClass: ship.designation || 'Unknown Class',
+        weaponSystems: size === 'capital' ? Math.floor(Math.random() * 20) + 10 :
+          size === 'large' ? Math.floor(Math.random() * 10) + 5 :
+            size === 'medium' ? Math.floor(Math.random() * 5) + 2 :
+              Math.floor(Math.random() * 3) + 1,
+        shieldStrength: ship.status === 'Active' ?
+          (size === 'capital' ? 'heavy' :
+            size === 'large' ? 'medium' :
+              size === 'medium' ? 'light' : 'none') : 'none',
+        isDoublePinned: ship.id === doublePinnedShipId
+      };
+    });
+
+    // Emit to weapons station with double-pinned ship data
+    if (socket) {
+      const room = new URLSearchParams(window.location.search).get('room') || 'default';
+      socket.emit('targeting_data_update', {
+        room,
+        targets: targetingData,
+        source: 'communications',
+        timestamp: Date.now(),
+        doublePinnedShip: doublePinnedShip ? {
+          id: doublePinnedShip.id,
+          designation: doublePinnedShip.designation,
+          status: doublePinnedShip.status
+        } : null
+      });
+      console.log('📡 Communications Station emitting targeting data:', {
+        totalShips: currentShips.length,
+        pinnedShips: Object.keys(pinnedShips).length,
+        emittedTargets: targetingData.length,
+        doublePinnedShip: doublePinnedShip?.id,
+        targetingData
+      });
+    }
+  }, [socket, pinnedShips, doublePinnedShipId]);
 
   // Scan animation effect
   useEffect(() => {
@@ -144,11 +227,11 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       // Signal strength fluctuation (±1.5 points around base value)
       const signalChange = (Math.random() - 0.5) * 3;
       const newSignalStrength = Math.max(0, Math.min(100, baseSignalStrength + signalChange));
-      
+
       // Interference fluctuation (±1 point around base value)
       const interferenceChange = (Math.random() - 0.5) * 2;
       const newInterference = Math.max(0, Math.min(100, baseInterference + interferenceChange));
-      
+
       setCurrentSignalStrength(Math.round(newSignalStrength));
       setCurrentInterference(Math.round(newInterference));
     }, 1000); // Update every second
@@ -198,87 +281,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
     return moffNamesArray[randomIndex];
   };
 
-  // Add organization list
-  const ORGANIZATIONS = [
-    "Imperial Galactic Governance Authority",
-    "Imperial Security & Intelligence Directorate",
-    "Imperial Inquisitorial Command",
-    "Sith High Command",
-    "Gerrera Resistance Movement",
-    "Mandalorian Death Watch",
-    "Mandalorian Children's Watch",
-    "Mandalorian Clan Alliance",
-    "Local Swoop Gang Networks",
-    "Hutt Cartel Crime Syndicate",
-    "Black Sun Criminal Enterprise",
-    "Pyke Syndicate Operations",
-    "Shadow Collective Alliance",
-    "Crymorah Syndicate Network",
-    "Zygerrian Slave Trade Empire",
-    "Kintan Striders Mercenary Group",
-    "Car'das Smuggling Consortium",
-    "Bounty Hunters' Guild Network",
-    "Czerka Arms Manufacturing",
-    "BlasTech Industrial Systems",
-    "Merr-Sonn Defense Solutions",
-    "Arakyd Industrial Technologies",
-    "Industrial Automaton Droidworks",
-    "Baktoid Combat Systems",
-    "Colla Design Collective",
-    "Tagge Industrial Mining Group",
-    "Techno Union Conglomerate",
-    "Haor Chall Engineering Corps",
-    "Santhe-Sienar Technologies Group",
-    "Sienar Fleet Systems Division",
-    "Kuat Drive Yards Shipbuilding",
-    "Kuat Systems Engineering Division",
-    "Rendili StarDrive Corporation",
-    "Corellian Engineering Works",
-    "Cygnus Spaceworks Limited",
-    "Loramarr Shipyards Consortium",
-    "Trade Federation Commerce Authority",
-    "InterGalactic Banking Federation",
-    "Corporate Alliance Board",
-    "Commerce Guild Trading Authority",
-    "Commerce Guild Executive Council",
-    "Mining Guild Extraction Services",
-    "Commerce Guild Security Forces",
-    "Arcona Mineral Resources Group",
-    "Dorvalla Mining Operations",
-    "Offworld Mining Corporation",
-    "SoroSuub Industrial Group",
-    "Commerce Guild Financial Services",
-    "Commerce Guild Arbitration Bureau",
-    "Kelris Industrial Tools & Supplies",
-    "Koensayr Equipment Distribution",
-    "Blarn Heavy Industrial Exchange",
-    "Reelo Modular Systems",
-    "Vyndra Commercial Trade Centers",
-    "Foshan Starport Retail Network",
-    "Crionex Consumer Markets",
-    "Qiraal Metalworks & Fabrication",
-    "Molvar Field Equipment Services",
-    "Polis Massa Scientific Procurement",
-    "Yarith Galactic Logistics",
-    "Caduceus Shipping Network",
-    "Dressem Cargo Systems",
-    "Trandoshan StarLift Services",
-    "Vandelhelm Bulk Transport",
-    "Yag'Dhul Route Navigation",
-    "Ylesia Freight Cooperative",
-    "Entralla Standard Shipping",
-    "Skako HydroLift Services",
-    "Bespin Tibanna Gas Solutions",
-    "Gentes ForgeFuel Refineries",
-    "Abhean Fuel Distribution",
-    "Kwenn Station Maintenance",
-    "Neimoidian Trade Commission",
-    "Zeltros Business Arbitration",
-    "Muunilinst Financial Compliance",
-    "Guild Standard Hostel Network",
-    "Bonadan MealStation Franchise",
-    "No Registered Designation"
-  ];
+  // Organization list is now handled by the central ship store
 
   // Signal analysis options (matching GM Station)
   const signalAnalysisOptions = [
@@ -292,6 +295,26 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
     { id: 'filter', name: 'Noise Filter', description: 'Remove background noise', effect: 'noise_reduction' }
   ];
 
+  // Initialize ship store with socket
+  useEffect(() => {
+    if (socket) {
+      const room = new URLSearchParams(window.location.search).get('room') || 'default';
+      shipStore.setSocket(socket, room);
+    }
+  }, [socket]);
+
+  // Subscribe to ship store updates
+  useEffect(() => {
+    const unsubscribe = shipStore.subscribe(() => {
+      setShips(shipStore.getShips());
+      setPinnedShips(shipStore.getPinnedShips());
+      setDoublePinnedShipId(shipStore.getDoublePinnedShipId());
+      setCurrentRegion(shipStore.getCurrentRegion() as any);
+    });
+
+    return unsubscribe;
+  }, []);
+
   // Initialize socket listeners
   useEffect(() => {
     if (!socket) return;
@@ -300,6 +323,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
 
     // Get room from URL parameter
     const room = new URLSearchParams(window.location.search).get('room') || 'default';
+    roomRef.current = room;
 
     // Join the room for proper message routing
     socket.emit('join', { room, station: 'communications' });
@@ -387,6 +411,36 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
     };
   }, [socket, onPlayerAction]);
 
+  // LRC streaming: watch the LRC DOM and push HTML
+  useEffect(() => {
+    if (!socket || !lrcRef.current) return;
+
+    const send = () => {
+      const html = lrcRef.current!.innerHTML;
+      socket.emit('lrc_update', { room: roomRef.current, html });
+      console.log('📡 Communications Station sent LRC update, HTML length:', html.length);
+    };
+
+    // Initial send
+    send();
+
+    // Observe for any child/list/text changes
+    const obs = new MutationObserver(() => send());
+    obs.observe(lrcRef.current, { childList: true, subtree: true, characterData: true });
+
+    // Answer snapshot requests from weapons
+    const onReq = () => {
+      console.log('📡 Communications Station received LRC snapshot request');
+      send();
+    };
+    socket.on('lrc_request_from_weapons', onReq);
+
+    return () => {
+      obs.disconnect();
+      socket.off('lrc_request_from_weapons', onReq);
+    };
+  }, [socket]);
+
   // Note: Frequency, signal strength, and interference are now handled by direct socket listeners
   // (gm_broadcast and comm_broadcast) to prevent conflicts with user input
 
@@ -432,15 +486,33 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
     }
   }, [socket, initialMessagesSent, mockComms.messageQueue]);
 
-  // Add ship update effect after the existing useEffect
+  // Update ship store region when currentRegion changes
   useEffect(() => {
-    // Initial population
-    generateInitialShips();
-
-    // Update ships every 5 seconds
-    const interval = setInterval(updateShipList, 5000);
-    return () => clearInterval(interval);
+    shipStore.setCurrentRegion(currentRegion);
   }, [currentRegion]);
+
+  // Emit targeting data whenever ships or pinned ships change
+  useEffect(() => {
+    if (ships.length > 0 && socket) {
+      emitTargetingData(ships);
+    }
+  }, [ships, pinnedShips, doublePinnedShipId, socket]);
+
+  // Broadcast ship data to weapons station whenever ships change
+  useEffect(() => {
+    if (socket) {
+      const room = new URLSearchParams(window.location.search).get('room') || 'default';
+      socket.emit('ship_data_update', {
+        room,
+        ships,
+        pinnedShips,
+        doublePinnedShipId,
+        currentRegion,
+        source: 'communications',
+        timestamp: Date.now()
+      });
+    }
+  }, [ships, pinnedShips, doublePinnedShipId, currentRegion, socket]);
 
   // Broadcast initial protocol when component mounts
   useEffect(() => {
@@ -453,167 +525,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
     });
   }, [socket]);
 
-  // Generate initial ships using Poisson distribution
-  const generateInitialShips = () => {
-    const params = calculateShipCount();
-    const count = Math.max(0, Math.round(params.target + (Math.random() - 0.5) * params.target * 0.3));
-    setShips(Array.from({ length: count }, () => createShip([])));
-  };
-
-  // Helper function for space-specific departure probabilities
-  const getBaseDepartureProbability = (shipType: 'transient' | 'regular' | 'persistent'): number => {
-    // Lowered departure probabilities reflecting space infrastructure limitations
-    const departureProbabilities = {
-      transient: 0.3,   // Was 0.5 (50% → 30%) - stopping in space is resource-intensive
-      regular: 0.1,     // Was 0.2 (20% → 10%) - longer stays due to high travel costs
-      persistent: 0.01  // Was 0.03 (3% → 1%) - very long stays for established operations
-    };
-    return departureProbabilities[shipType];
-  };
-
-  const createShip = (existingShips: Ship[] = []): Ship => {
-    // Determine ship type with weighted probabilities
-    const typeRoll = Math.random();
-    let type: 'transient' | 'regular' | 'persistent';
-
-    if (typeRoll < 0.6) {
-      type = 'transient';  // 60% chance - short-lived
-    } else if (typeRoll < 0.95) {
-      type = 'regular';    // 35% chance - medium-lived
-    } else {
-      type = 'persistent'; // 5% chance - long-lived
-    }
-
-    // 30% chance to be in a convoy group (space ships often travel together for safety)
-    let groupId: string | undefined;
-    if (Math.random() < 0.3) {
-      // Check existing ships for possible grouping (70% chance to join existing group)
-      if (existingShips.length > 0 && Math.random() < 0.7) {
-        // Join existing group - FIXED: Using Array.from() for ES compatibility
-        const existingGroups = Array.from(new Set(
-          existingShips.map(s => s.groupId).filter((g): g is string => g !== undefined)
-        ));
-        groupId = existingGroups.length > 0
-          ? existingGroups[Math.floor(Math.random() * existingGroups.length)]
-          : `convoy-${Date.now()}-${Math.random()}`;
-      } else {
-        // Create new convoy group
-        groupId = `convoy-${Date.now()}-${Math.random()}`;
-      }
-    }
-
-    return {
-      id: `${Date.now()}-${Math.random()}`,
-      designation: Math.random() < 0.77 ?
-        ORGANIZATIONS[Math.floor(Math.random() * ORGANIZATIONS.length)] :
-        null,
-      status: Math.random() < 0.7 ? 'Active' : 'Inactive',
-      entryTime: Date.now(),
-      type,
-      age: 0,
-      groupId
-    };
-  };
-
-  // Space-specific Poisson arrival and convoy departure system
-  const updateShipList = () => {
-    setShips(prev => {
-      // 1. Age existing ships
-      const agedShips = prev.map(ship => ({
-        ...ship,
-        age: ship.age + 1
-      }));
-
-      // 2. Track departing convoy groups (group synchronization)
-      const departingGroups = new Set<string>();
-
-      // First pass: identify ships that want to depart individually
-      agedShips.forEach(ship => {
-        // Skip departure check if ship is pinned
-        if (pinnedShips[ship.id]) return;
-        
-        const baseProbability = getBaseDepartureProbability(ship.type);
-        if (Math.random() < baseProbability && ship.groupId) {
-          departingGroups.add(ship.groupId);
-        }
-      });
-
-      // 3. Filter ships that stay with convoy synchronization
-      const shipsThatStay = agedShips.filter(ship => {
-        // Always keep pinned ships
-        if (pinnedShips[ship.id]) return true;
-        
-        let departureProbability = getBaseDepartureProbability(ship.type);
-
-        // Increase departure chance if in departing convoy (3x multiplier)
-        if (ship.groupId && departingGroups.has(ship.groupId)) {
-          departureProbability *= 3;
-        }
-
-        return Math.random() > departureProbability;
-      }).map(toggleStatusRandomly);
-
-      // 4. Calculate arrival rate based on region (Poisson process)
-      const params = calculateShipCount();
-      const lambda = params.lambda;
-
-      // 5. Generate Poisson-distributed arrivals - FIXED: Explicit type annotation
-      const newArrivals: Ship[] = [];
-      let k = 0;
-      let p = 1;
-      const L = Math.exp(-lambda);
-
-      do {
-        k++;
-        p *= Math.random();
-      } while (p > L);
-
-      // Generate new ships based on Poisson distribution (pass existing ships for grouping)
-      for (let i = 0; i < k - 1; i++) {
-        newArrivals.push(createShip([...shipsThatStay, ...newArrivals]));
-      }
-
-      // 6. Traffic transitions occur silently (no transmission log entries)
-
-      return [...shipsThatStay, ...newArrivals];
-    });
-  };
-
-  // Calculate region-specific Poisson parameters for queueing theory
-  const calculateShipCount = (): { lambda: number; target: number } => {
-    // Base arrival rates per region (λ) and target steady-state counts
-    const regionParams = {
-      'Core Worlds': { lambda: 25, target: 250 },   // λ=25 arrivals/interval
-      'Colonies': { lambda: 12.5, target: 125 },
-      'Inner Rim': { lambda: 5.2, target: 52 },
-      'Mid Rim': { lambda: 1.5, target: 15 },
-      'Outer Rim': { lambda: 0.4, target: 4 },
-      'Wild Space': { lambda: 0.1, target: 1 },
-      'Unknown Regions': { lambda: 0.05, target: 0.5 }
-    };
-
-    const params = regionParams[currentRegion] || { lambda: 0, target: 0 };
-
-    // Add occasional traffic surges (1% chance for high activity)
-    if (Math.random() < 0.01) {
-      return {
-        lambda: params.lambda * 4,
-        target: params.target * 4
-      };
-    }
-
-    return params;
-  };
-
-  const toggleStatusRandomly = (ship: Ship): Ship => {
-    if (Math.random() < 0.2) {
-      return {
-        ...ship,
-        status: ship.status === 'Active' ? 'Inactive' : 'Active'
-      };
-    }
-    return ship;
-  };
+  // Ship management is now handled by the central ship store
 
   // Use real-time socket values instead of stale gameState
   const communications = {
@@ -943,9 +855,9 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
               No transmissions received
             </div>
           ) : (
-            communications.messageQueue.map((message: any) => (
+            communications.messageQueue.map((message: any, index: number) => (
               <div
-                key={message.id}
+                key={`${message.id}-${index}`}
                 style={{
                   margin: '8px 0',
                   padding: '8px',
@@ -1153,12 +1065,14 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
             {currentRegion}
           </span>
         </h3>
-        <div style={{
-          fontSize: '11px',
-          height: '100%',
-          overflowY: 'auto',
-          padding: '5px 0'
-        }}>
+        <div 
+          ref={lrcRef}
+          style={{
+            fontSize: '11px',
+            height: '100%',
+            overflowY: 'auto',
+            padding: '5px 0'
+          }}>
           {ships.length === 0 ? (
             <div style={{ color: '#666666', textAlign: 'center', margin: '10px 0' }}>
               No vessels in range
@@ -1178,76 +1092,75 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
                   margin: '4px 0',
                   padding: '3px 5px',
                   borderBottom: '1px solid rgba(0, 255, 255, 0.1)',
-                  backgroundColor: pinnedShips[ship.id] === 'white' ? 'rgba(255, 255, 255, 0.2)' : 
-                                  pinnedShips[ship.id] === 'red' ? 'rgba(255, 0, 0, 0.2)' : 'transparent',
+                  backgroundColor: pinnedShips[ship.id] === 'white' ? 'rgba(255, 255, 255, 0.2)' :
+                    pinnedShips[ship.id] === 'red' ? 'rgba(255, 0, 0, 0.2)' : 'transparent',
                   cursor: 'context-menu',
                   transition: 'background-color 0.2s ease'
                 }}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  
-                  setPinnedShips(prev => {
-                    const currentState = prev[ship.id] || 'none';
-                    const newPinned = { ...prev };
-                    const room = new URLSearchParams(window.location.search).get('room') || 'default';
-                    
-                    // If currently white, make it red (if no other red exists)
-                    if (currentState === 'white') {
-                      // If there's a red ship, unpin it first
-                      if (doublePinnedShipId) {
-                        delete newPinned[doublePinnedShipId];
-                      }
-                      // Make this ship red
-                      newPinned[ship.id] = 'red';
-                      setDoublePinnedShipId(ship.id);
-                      
-                      // Notify GM about the red-pinned ship
+
+                  const currentPinned = shipStore.getPinnedShips();
+                  const currentState = currentPinned[ship.id] || 'none';
+                  const newPinned = { ...currentPinned };
+                  const room = new URLSearchParams(window.location.search).get('room') || 'default';
+
+                  // If currently white, make it red (if no other red exists)
+                  if (currentState === 'white') {
+                    // If there's a red ship, unpin it first
+                    if (doublePinnedShipId) {
+                      delete newPinned[doublePinnedShipId];
+                    }
+                    // Make this ship red
+                    newPinned[ship.id] = 'red';
+                    shipStore.setDoublePinnedShipId(ship.id);
+
+                    // Notify GM about the red-pinned ship
+                    socket?.emit('gm_broadcast', {
+                      type: 'red_pinned_ship',
+                      value: {
+                        id: ship.id,
+                        designation: ship.designation,
+                        status: ship.status
+                      },
+                      room,
+                      source: 'communications'
+                    });
+
+                    shipStore.setPinnedShips(newPinned);
+                  }
+                  // If currently red, unpin it
+                  else if (currentState === 'red') {
+                    delete newPinned[ship.id];
+                    if (doublePinnedShipId === ship.id) {
+                      shipStore.setDoublePinnedShipId(null);
+                      // Notify GM that the red pin was removed
                       socket?.emit('gm_broadcast', {
                         type: 'red_pinned_ship',
-                        value: {
-                          id: ship.id,
-                          designation: ship.designation,
-                          status: ship.status
-                        },
+                        value: null,
                         room,
                         source: 'communications'
                       });
-                      
-                      return newPinned;
-                    } 
-                    // If currently red, unpin it
-                    else if (currentState === 'red') {
-                      delete newPinned[ship.id];
-                      if (doublePinnedShipId === ship.id) {
-                        setDoublePinnedShipId(null);
-                        // Notify GM that the red pin was removed
-                        socket?.emit('gm_broadcast', {
-                          type: 'red_pinned_ship',
-                          value: null,
-                          room,
-                          source: 'communications'
-                        });
-                      }
-                      return newPinned;
-                    } 
-                    // If not pinned, make it white
-                    else {
-                      // If there's a red ship, unpin it first
-                      if (doublePinnedShipId) {
-                        delete newPinned[doublePinnedShipId];
-                        setDoublePinnedShipId(null);
-                        // Notify GM that the red pin was removed
-                        socket?.emit('gm_broadcast', {
-                          type: 'red_pinned_ship',
-                          value: null,
-                          room,
-                          source: 'communications'
-                        });
-                      }
-                      newPinned[ship.id] = 'white';
-                      return newPinned;
                     }
-                  });
+                    shipStore.setPinnedShips(newPinned);
+                  }
+                  // If not pinned, make it white
+                  else {
+                    // If there's a red ship, unpin it first
+                    if (doublePinnedShipId) {
+                      delete newPinned[doublePinnedShipId];
+                      shipStore.setDoublePinnedShipId(null);
+                      // Notify GM that the red pin was removed
+                      socket?.emit('gm_broadcast', {
+                        type: 'red_pinned_ship',
+                        value: null,
+                        room,
+                        source: 'communications'
+                      });
+                    }
+                    newPinned[ship.id] = 'white';
+                    shipStore.setPinnedShips(newPinned);
+                  }
                 }}
               >
                 <span style={{
@@ -1271,7 +1184,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
             ))
           )}
         </div>
-        
+
         {/* Double-pinned ship information display */}
         {doublePinnedShipId && (() => {
           const doublePinnedShip = ships.find(ship => ship.id === doublePinnedShipId);
