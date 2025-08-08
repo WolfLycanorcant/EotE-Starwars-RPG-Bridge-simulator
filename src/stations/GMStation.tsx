@@ -2019,6 +2019,23 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     onChange={(e) => {
                       const newFuelLevel = parseInt(e.target.value);
                       console.log('⛽ GM setting fuel level via slider to:', newFuelLevel);
+                      
+                      // Update local GM state immediately for responsive UI
+                      setPilotState(prev => ({
+                        ...prev,
+                        fuelLevel: newFuelLevel
+                      }));
+                      
+                      // Also update the states object for consistency
+                      setStates(prev => ({
+                        ...prev,
+                        navigation: {
+                          ...prev.navigation,
+                          fuelLevel: newFuelLevel
+                        }
+                      }));
+                      
+                      // Broadcast to navigation station
                       socket?.emit('gm_broadcast', {
                         type: 'fuel_control',
                         value: { action: 'set_level', level: newFuelLevel },
@@ -2044,41 +2061,226 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 {/* Fuel Macro Controls */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4, marginTop: 8 }}>
                   <EmitRed onClick={() => {
+                    const newFuelLevel = 0;
                     console.log('⛽ GM setting fuel to EMPTY (0%)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
+                    }));
+                    
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'set_level', level: 0 },
+                      value: { action: 'set_level', level: newFuelLevel },
                       room: roomRef.current,
                       source: 'gm'
                     });
                   }}>Empty</EmitRed>
                   <EmitRed onClick={() => {
+                    const newFuelLevel = 10;
                     console.log('⛽ GM setting fuel to CRITICAL (10%)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
+                    }));
+                    
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'set_level', level: 10 },
+                      value: { action: 'set_level', level: newFuelLevel },
                       room: roomRef.current,
                       source: 'gm'
                     });
                   }}>Critical</EmitRed>
                   <EmitButton onClick={() => {
+                    const newFuelLevel = 75;
                     console.log('⛽ GM setting fuel to NORMAL (75%)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
+                    }));
+                    
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'set_level', level: 75 },
+                      value: { action: 'set_level', level: newFuelLevel },
                       room: roomRef.current,
                       source: 'gm'
                     });
                   }}>Normal</EmitButton>
                   <EmitButton onClick={() => {
+                    const newFuelLevel = 100;
                     console.log('⛽ GM setting fuel to FULL (100%)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
+                    }));
+                    
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
-                      value: { action: 'set_level', level: 100 },
+                      value: { action: 'set_level', level: newFuelLevel },
                       room: roomRef.current,
                       source: 'gm'
                     });
                   }}>Full</EmitButton>
+                </div>
+              </div>
+
+              {/* Engine Temperature Control */}
+              <div style={{ marginTop: 15, marginBottom: 10 }}>
+                <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 8, fontWeight: 'bold' }}>
+                  ENGINE TEMPERATURE CONTROL:
+                </div>
+                <Row>
+                  <span>Current Engine Temp:</span>
+                  <span style={{
+                    color: (pilotState.engineTemp ?? 0) > 80 ? '#ff0040' :
+                      (pilotState.engineTemp ?? 0) > 60 ? '#ffd700' : '#00ff88'
+                  }}>
+                    {(pilotState.engineTemp ?? 0).toFixed(0)}°C
+                  </span>
+                </Row>
+                
+                {/* Temperature Slider Control */}
+                <div style={{ marginTop: 10, marginBottom: 10 }}>
+                  <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
+                    Set Engine Temperature: {pilotState.engineTemp ?? 45}°C
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="120"
+                    step="1"
+                    value={pilotState.engineTemp ?? 45}
+                    onChange={(e) => {
+                      const newEngineTemp = parseInt(e.target.value);
+                      console.log('🌡️ GM setting engine temperature via slider to:', newEngineTemp);
+                      
+                      // Update local GM state immediately for responsive UI
+                      setPilotState(prev => ({
+                        ...prev,
+                        engineTemp: newEngineTemp
+                      }));
+                      
+                      // Also update the states object for consistency
+                      setStates(prev => ({
+                        ...prev,
+                        navigation: {
+                          ...prev.navigation,
+                          engineTemp: newEngineTemp
+                        }
+                      }));
+                      
+                      // Broadcast to navigation station
+                      socket?.emit('gm_broadcast', {
+                        type: 'engine_temp_control',
+                        value: { action: 'set_temperature', temperature: newEngineTemp },
+                        room: roomRef.current,
+                        source: 'gm'
+                      });
+                    }}
+                    style={{ 
+                      width: '100%',
+                      background: 'linear-gradient(90deg, #00ff88 0%, #ffff00 50%, #ff8800 75%, #ff0040 100%)',
+                      height: '6px',
+                      borderRadius: '3px',
+                      outline: 'none',
+                      cursor: 'pointer',
+                      accentColor: 'var(--gm-yellow)'
+                    }}
+                  />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '0.7rem', color: '#666' }}>
+                    <span>0°C</span>
+                    <span>30°C</span>
+                    <span>60°C</span>
+                    <span>90°C</span>
+                    <span>120°C</span>
+                  </div>
+                </div>
+
+                {/* Temperature Macro Controls */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 4, marginTop: 8 }}>
+                  <EmitButton onClick={() => {
+                    const newEngineTemp = 20;
+                    console.log('🌡️ GM setting engine temp to COLD (20°C)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, engineTemp: newEngineTemp }
+                    }));
+                    
+                    socket?.emit('gm_broadcast', {
+                      type: 'engine_temp_control',
+                      value: { action: 'set_temperature', temperature: newEngineTemp },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Cold</EmitButton>
+                  <EmitButton onClick={() => {
+                    const newEngineTemp = 45;
+                    console.log('🌡️ GM setting engine temp to NORMAL (45°C)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, engineTemp: newEngineTemp }
+                    }));
+                    
+                    socket?.emit('gm_broadcast', {
+                      type: 'engine_temp_control',
+                      value: { action: 'set_temperature', temperature: newEngineTemp },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Normal</EmitButton>
+                  <EmitButton onClick={() => {
+                    const newEngineTemp = 75;
+                    console.log('🌡️ GM setting engine temp to WARM (75°C)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, engineTemp: newEngineTemp }
+                    }));
+                    
+                    socket?.emit('gm_broadcast', {
+                      type: 'engine_temp_control',
+                      value: { action: 'set_temperature', temperature: newEngineTemp },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Warm</EmitButton>
+                  <EmitRed onClick={() => {
+                    const newEngineTemp = 95;
+                    console.log('🌡️ GM setting engine temp to CRITICAL (95°C)');
+                    
+                    // Update local GM state immediately
+                    setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
+                    setStates(prev => ({
+                      ...prev,
+                      navigation: { ...prev.navigation, engineTemp: newEngineTemp }
+                    }));
+                    
+                    socket?.emit('gm_broadcast', {
+                      type: 'engine_temp_control',
+                      value: { action: 'set_temperature', temperature: newEngineTemp },
+                      room: roomRef.current,
+                      source: 'gm'
+                    });
+                  }}>Critical</EmitRed>
                 </div>
               </div>
 

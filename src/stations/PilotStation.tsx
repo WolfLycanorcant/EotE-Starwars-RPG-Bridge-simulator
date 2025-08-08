@@ -1272,6 +1272,15 @@ const PilotStation: React.FC = () => {
               }));
             }
             break;
+          case 'engine_temp_control':
+            console.log('🌡️ GM engine temperature control:', data.value);
+            if (data.value.action === 'set_temperature' && data.value.temperature !== undefined) {
+              setPilotState(prev => ({
+                ...prev,
+                engineTemp: Math.max(0, Math.min(120, data.value.temperature))
+              }));
+            }
+            break;
         }
       }
     });
@@ -1630,20 +1639,58 @@ const PilotStation: React.FC = () => {
         letterSpacing: '3px'
       }}>NAVIGATION STATION</h1>
 
-      {/* Alert Status */}
-      <StatusGrid>
-        <StatusCard>
-          <h2>ALERT STATUS</h2>
-          <StatusValue alert={(pilotState.alert || 'normal').toLowerCase()}>
-            {(pilotState.alert || 'NORMAL').toUpperCase()}
-          </StatusValue>
-          <StatusMessage alert={(pilotState.alert || 'normal').toLowerCase()}>
-            {pilotState.alert === 'normal' ? 'All clear' : pilotState.alert || 'Normal'}
-          </StatusMessage>
-        </StatusCard>
-      </StatusGrid>
+      {/* System Status with Status Bars - Moved to top */}
+      <div className="cockpit-panel">
+        <h3 style={{
+          textAlign: 'center',
+          color: 'var(--cockpit-primary)',
+          marginBottom: '20px',
+          textShadow: 'var(--cockpit-text-glow) var(--cockpit-primary)'
+        }}>SYSTEM STATUS</h3>
 
-      {/* System Status Monitoring */}
+        <div style={{ display: 'grid', gap: '15px' }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <span style={{ color: 'var(--cockpit-accent)' }}>FUEL LEVEL</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.fuelLevel ?? 0).toFixed(1)}%</span>
+            </div>
+            <div className="status-bar">
+              <div
+                className="status-fill fuel"
+                style={{ width: `${pilotState.fuelLevel}%` }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <span style={{ color: 'var(--cockpit-accent)' }}>SHIELD STATUS</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.shieldStatus ?? 0).toFixed(0)}%</span>
+            </div>
+            <div className="status-bar">
+              <div
+                className="status-fill shields"
+                style={{ width: `${pilotState.shieldStatus}%` }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
+              <span style={{ color: 'var(--cockpit-accent)' }}>ENGINE TEMPERATURE</span>
+              <span style={{ color: 'var(--cockpit-accent)' }}>{(pilotState.engineTemp ?? 0).toFixed(0)}°C</span>
+            </div>
+            <div className="status-bar">
+              <div
+                className="status-fill temperature"
+                style={{ width: `${(pilotState.engineTemp / 120) * 100}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* System Status Monitoring - Moved to top */}
       <SystemStatus>
         <SystemCard status={pilotState.fuelLevel < 20 ? 'critical' : pilotState.fuelLevel < 50 ? 'warning' : 'good'}>
           <h4>Fuel Level</h4>
@@ -1677,10 +1724,25 @@ const PilotStation: React.FC = () => {
         </SystemCard>
       </SystemStatus>
 
+      {/* Alert Status */}
+      <div style={{ position: 'absolute', left: '50px', top: '600px' }}>
+        <StatusGrid>
+        <StatusCard>
+          <h2>ALERT STATUS</h2>
+          <StatusValue alert={(pilotState.alert || 'normal').toLowerCase()}>
+            {(pilotState.alert || 'NORMAL').toUpperCase()}
+          </StatusValue>
+          <StatusMessage alert={(pilotState.alert || 'normal').toLowerCase()}>
+            {pilotState.alert === 'normal' ? 'All clear' : pilotState.alert || 'Normal'}
+          </StatusMessage>
+        </StatusCard>
+      </StatusGrid>
+      </div>
+
       {/* Flight Instruments */}
       <div className="instrument-grid">
         {/* Radio Altimeter */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginLeft: '480px' }}>
           <div style={{
             fontSize: '1.1rem',
             color: 'var(--cockpit-accent)',
@@ -1784,7 +1846,7 @@ const PilotStation: React.FC = () => {
         </div>
 
         {/* Velocity Indicator */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '15px', marginLeft: '-480px' }}>
           <div style={{
             fontSize: '1.1rem',
             color: 'var(--cockpit-accent)',
