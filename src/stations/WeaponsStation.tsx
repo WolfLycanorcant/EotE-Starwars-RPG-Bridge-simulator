@@ -396,6 +396,12 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       weaponName.toLowerCase().includes('torpedo');
   };
 
+  const weaponHasGuidedSpecial = (): boolean => {
+    // Check if the currently selected weapon has "guided" in its special property
+    if (!selectedWeapon || !weaponDetails) return false;
+    return weaponDetails.special?.toLowerCase().includes('guided') || false;
+  };
+
   const getWeaponDamage = (weaponName: string): number => {
     // Map weapon names to damage values based on weapon type
     if (weaponName.toLowerCase().includes('turbolaser')) {
@@ -1191,7 +1197,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     ctx.font = '18px Orbitron, monospace';
     ctx.fillText(`MISSILES: ${missiles}`, 390, R_HEIGHT - 22);
     ctx.font = '12px Orbitron, monospace';
-    if (heatSinks > 0) ctx.fillText(`HEAT SINKS: ${heatSinks}`, 160, R_HEIGHT - 40);
+    if (heatSinks > 0) ctx.fillText(`HEAT SINKS: ${heatSinks}`, 407, R_HEIGHT - 40);
 
     // Draw projectiles
     projectiles.forEach(projectile => {
@@ -1624,12 +1630,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       }
     };
     raf = requestAnimationFrame(step);
-  };
-
-  const useHeatSink = () => {
-    if (heatSinks <= 0) return;
-    setHeat(h => Math.max(0, h - 45));
-    setHeatSinks(h => Math.max(0, h - 1));
   };
 
   const lrcHostRef = useRef<HTMLDivElement | null>(null);
@@ -2207,19 +2207,44 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Ammo</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {(['KINETIC', 'ION', 'SEEKER', 'PIERCING'] as Ammo[]).map(a => (
-              <button
-                key={a}
-                onClick={() => setAmmo(a)}
-                style={{
-                  padding: '6px 8px', borderRadius: 6, border: '1px solid #0af',
-                  background: ammo === a ? 'linear-gradient(45deg,#00ff88,#00ffff)' : 'rgba(10,30,50,0.6)', color: ammo === a ? '#000' : '#eee',
-                  fontWeight: 700, cursor: 'pointer'
-                }}
-              >
-                {AMMO_DEF[a].name}
-              </button>
-            ))}
+            {(['KINETIC', 'ION', 'SEEKER', 'PIERCING'] as Ammo[]).map(a => {
+              const isSeeker = a === 'SEEKER';
+              const isIon = a === 'ION';
+              const isPiercing = a === 'PIERCING';
+              const hasGuided = weaponHasGuidedSpecial();
+              const hasIon = weaponDetails?.special?.toLowerCase().includes('ion') || false;
+              const hasBreach = weaponDetails?.special?.toLowerCase().includes('breach') || false;
+              const isDisabled = (isSeeker && !hasGuided) || (isIon && !hasIon) || (isPiercing && !hasBreach);
+
+              return (
+                <button
+                  key={a}
+                  onClick={() => !isDisabled && setAmmo(a)}
+                  disabled={isDisabled}
+                  style={{
+                    padding: '6px 8px',
+                    borderRadius: 6,
+                    border: '1px solid #0af',
+                    background: isDisabled
+                      ? 'rgba(100, 100, 100, 0.3)' // Shaded when disabled
+                      : ammo === a
+                        ? 'linear-gradient(45deg,#00ff88,#00ffff)'
+                        : 'rgba(10,30,50,0.6)',
+                    color: isDisabled
+                      ? '#777' // Faded text when disabled
+                      : ammo === a
+                        ? '#000'
+                        : '#eee',
+                    fontWeight: 700,
+                    cursor: isDisabled ? 'not-allowed' : 'pointer',
+                    opacity: isDisabled ? 0.5 : 1,
+                    transition: 'all 0.3s ease'
+                  }}
+                >
+                  {isSeeker ? 'GUIDED' : isPiercing ? 'BREACH' : AMMO_DEF[a].name}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -2316,7 +2341,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
             <div style={{ fontSize: 12 }}>
-              {locked ? <span style={{ color: '#00ff88', fontWeight: 700 }}>LOCKED — Seeker ready</span> : <span style={{ color: '#aaa' }}>Tune to target ECM</span>}
+              {locked ? <span style={{ color: '#00ff88', fontWeight: 700 }}>LOCKED — Guided ready</span> : <span style={{ color: '#aaa' }}>Tune to target ECM</span>}
             </div>
             <button
               onClick={() => {
@@ -2331,24 +2356,24 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                   console.log('❌ Cannot lock - no valid target selected');
                 }
               }}
-              disabled={!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0}
+              disabled={!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0 || !weaponHasGuidedSpecial()}
               style={{
                 padding: '4px 8px',
                 borderRadius: '4px',
                 border: '1px solid #00ffff',
-                background: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                background: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0 || !weaponHasGuidedSpecial())
                   ? 'rgba(100, 100, 100, 0.3)'
                   : locked
                     ? 'rgba(255, 0, 0, 0.3)'
                     : 'rgba(0, 255, 255, 0.3)',
-                color: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                color: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0 || !weaponHasGuidedSpecial())
                   ? '#777'
                   : locked
                     ? '#ff0000'
                     : '#00ffff',
                 fontSize: '10px',
                 fontWeight: 'bold',
-                cursor: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                cursor: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0 || !weaponHasGuidedSpecial())
                   ? 'not-allowed'
                   : 'pointer',
                 transition: 'all 0.2s ease'
@@ -2364,24 +2389,12 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                 }
               }}
             >
-              {locked ? '🔒 LOCKED' : '🎯 LOCK'}
+              {locked ? '🔒 GUIDED' : '🎯 GUIDED'}
             </button>
           </div>
         </div>
 
-        <div style={{ margin: '10px 0' }}>
-          <button
-            onClick={useHeatSink}
-            disabled={heatSinks <= 0}
-            style={{
-              width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #0af',
-              background: heatSinks > 0 ? 'rgba(0,255,136,0.2)' : 'rgba(100,100,100,0.3)',
-              color: heatSinks > 0 ? '#00ff88' : '#777', fontWeight: 700, cursor: heatSinks > 0 ? 'pointer' : 'not-allowed'
-            }}
-          >
-            Use Heat Sink ({heatSinks})
-          </button>
-        </div>
+
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
           <button
@@ -2450,9 +2463,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         <div style={{ marginTop: 12, fontSize: 11, lineHeight: 1.35, color: '#a7c9ff' }}>
           <div>Tips:</div>
           <ul style={{ margin: '6px 0 0 16px' }}>
-            <li>Move mouse to keep target inside the gold ring to build <b>Solve</b>.</li>
-            <li>Counter drift with <b>A/D</b> or arrow keys to reduce <b>Track Error</b>.</li>
-            <li>Manage <b>Heat</b>. On overheat, press <b>Space</b> in the green window to clear fast.</li>
             <li>For missiles, tune the <b>Signal Match</b> dial until it <b>locks</b>.</li>
             <li>Click a blip to select a target; shoot, then salvage the wreck.</li>
           </ul>
