@@ -8,6 +8,7 @@ export interface GameState {
     analysisMode?: string;
   };
   engineering?: {
+    repairQueue: any;
     powerDistribution: {
       totalPower: number;
       reactorOutput: number;
