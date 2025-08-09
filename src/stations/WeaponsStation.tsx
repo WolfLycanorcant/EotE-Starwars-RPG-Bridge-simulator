@@ -104,6 +104,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
   const [overheated, setOverheated] = useState(false);
   const [reloadWindow, setReloadWindow] = useState<{ start: number; end: number } | null>(null);
   const [jamTimer, setJamTimer] = useState<number>(0);
+  const [reloadProgress, setReloadProgress] = useState<number>(0);
 
   const [playerFreq, setPlayerFreq] = useState(500);
   const [lockFill, setLockFill] = useState(0);
@@ -125,36 +126,103 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
   const [currentRegion, setCurrentRegion] = useState<string>(shipStore.getCurrentRegion());
 
   // Dynamic weapon management state
-  const [primaryWeapons, setPrimaryWeapons] = useState<string[]>(['Turbolaser Battery', 'Ion Cannons', 'Proton Torpedo Launcher']);
-  const [secondaryWeapons, setSecondaryWeapons] = useState<string[]>(['Point Defense', 'Concussion Missiles', 'Tractor Beam']);
+  const [primaryWeapons, setPrimaryWeapons] = useState<string[]>([]);
+  const [secondaryWeapons, setSecondaryWeapons] = useState<string[]>([]);
   const [selectedWeapon, setSelectedWeapon] = useState<string | null>(null);
   const [weaponDetails, setWeaponDetails] = useState<any>(null);
+  const [hoveredShip, setHoveredShip] = useState<Ship | null>(null);
+  const [mousePosition, setMousePosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [selectedShip, setSelectedShip] = useState<Ship | null>(null);
+  const [selectedShipStats, setSelectedShipStats] = useState<any>(null);
+
+  // Star Wars ship types and their base stats (Edge of the Empire)
+  const STAR_WARS_SHIPS = [
+    { name: 'YT-1300 Light Freighter', silhouette: 4, speed: 3, handling: -1, defense: [1, 1], armor: 3, hullTrauma: 25, systemStrain: 13, crew: '1-2', passengers: 6, encumbrance: 165, cost: 100000 },
+    { name: 'YT-2400 Light Freighter', silhouette: 4, speed: 4, handling: 0, defense: [1, 1], armor: 3, hullTrauma: 22, systemStrain: 15, crew: '1-2', passengers: 6, encumbrance: 150, cost: 130000 },
+    { name: 'YT-2000 Transport', silhouette: 4, speed: 3, handling: -1, defense: [1, 1], armor: 3, hullTrauma: 20, systemStrain: 12, crew: '1-2', passengers: 8, encumbrance: 120, cost: 90000 },
+    { name: 'HWK-290 Light Freighter', silhouette: 3, speed: 4, handling: 1, defense: [1, 1], armor: 3, hullTrauma: 12, systemStrain: 13, crew: '1-2', passengers: 6, encumbrance: 75, cost: 85000 },
+    { name: 'VCX-100 Light Freighter', silhouette: 4, speed: 3, handling: -1, defense: [1, 2], armor: 3, hullTrauma: 25, systemStrain: 16, crew: '2-6', passengers: 8, encumbrance: 175, cost: 150000 },
+    { name: 'Ghtroc 720 Light Freighter', silhouette: 4, speed: 3, handling: -2, defense: [0, 1], armor: 2, hullTrauma: 18, systemStrain: 11, crew: '1-3', passengers: 10, encumbrance: 135, cost: 65000 },
+    { name: 'Baudo-class Star Yacht', silhouette: 4, speed: 4, handling: 1, defense: [1, 1], armor: 3, hullTrauma: 20, systemStrain: 14, crew: '1-2', passengers: 6, encumbrance: 80, cost: 350000 },
+    { name: 'Citadel-class Cruiser', silhouette: 5, speed: 2, handling: -2, defense: [2, 1], armor: 4, hullTrauma: 45, systemStrain: 25, crew: '8-12', passengers: 100, encumbrance: 2500, cost: 750000 },
+    { name: 'Gozanti-class Cruiser', silhouette: 5, speed: 2, handling: -3, defense: [1, 1], armor: 4, hullTrauma: 35, systemStrain: 20, crew: '4-12', passengers: 15, encumbrance: 1500, cost: 200000 },
+    { name: 'GR-75 Medium Transport', silhouette: 5, speed: 2, handling: -3, defense: [1, 1], armor: 3, hullTrauma: 35, systemStrain: 20, crew: '6-8', passengers: 90, encumbrance: 19000, cost: 120000 },
+    { name: 'Action VI Transport', silhouette: 6, speed: 1, handling: -4, defense: [1, 1], armor: 4, hullTrauma: 50, systemStrain: 25, crew: '8-15', passengers: 800, encumbrance: 50000, cost: 150000 },
+    { name: 'Bulk Cruiser', silhouette: 7, speed: 1, handling: -4, defense: [1, 1], armor: 5, hullTrauma: 75, systemStrain: 35, crew: '2000-6000', passengers: 600, encumbrance: 75000, cost: 800000 },
+    { name: 'Consular-class Cruiser', silhouette: 5, speed: 3, handling: -2, defense: [2, 1], armor: 5, hullTrauma: 50, systemStrain: 30, crew: '8-9', passengers: 16, encumbrance: 900, cost: 900000 },
+    { name: 'Wayfarer-class Transport', silhouette: 5, speed: 2, handling: -2, defense: [1, 1], armor: 4, hullTrauma: 30, systemStrain: 18, crew: '4-6', passengers: 12, encumbrance: 220, cost: 275000 },
+    { name: 'Gymsnor-3 Light Freighter', silhouette: 4, speed: 3, handling: -1, defense: [1, 1], armor: 3, hullTrauma: 22, systemStrain: 14, crew: '1-3', passengers: 8, encumbrance: 140, cost: 95000 },
+    { name: 'Mobquet Medium Transport', silhouette: 4, speed: 3, handling: -2, defense: [1, 1], armor: 3, hullTrauma: 24, systemStrain: 15, crew: '2-4', passengers: 12, encumbrance: 200, cost: 110000 },
+    { name: 'Corellian YV-929 Freighter', silhouette: 4, speed: 3, handling: 0, defense: [1, 1], armor: 4, hullTrauma: 28, systemStrain: 16, crew: '1-4', passengers: 10, encumbrance: 180, cost: 160000 },
+    { name: 'Kuat Drive Yards Firespray', silhouette: 3, speed: 4, handling: 1, defense: [1, 1], armor: 4, hullTrauma: 15, systemStrain: 12, crew: 1, passengers: 6, encumbrance: 140, cost: 120000 },
+    { name: 'Corellian Engineering YZ-775', silhouette: 4, speed: 2, handling: -2, defense: [1, 1], armor: 4, hullTrauma: 26, systemStrain: 17, crew: '2-5', passengers: 15, encumbrance: 250, cost: 140000 }
+  ];
+
+  // Generate random ship stats based on Edge of the Empire rules
+  const generateShipStats = (ship: Ship) => {
+    const shipHash = ship.id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+
+    // Use hash to consistently select same ship type for same ship ID
+    const shipTypeIndex = Math.abs(shipHash % STAR_WARS_SHIPS.length);
+    const baseShip = STAR_WARS_SHIPS[shipTypeIndex];
+
+    // Add some random variation to stats (±10-20%)
+    const variation = () => 0.8 + (Math.abs(shipHash % 40) / 100); // 0.8 to 1.2
+
+    return {
+      ...baseShip,
+      // Add some variation to key stats
+      hullTrauma: Math.round(baseShip.hullTrauma * variation()),
+      systemStrain: Math.round(baseShip.systemStrain * variation()),
+      currentHull: Math.round(baseShip.hullTrauma * variation()),
+      currentStrain: Math.round(baseShip.systemStrain * variation()),
+      // Random condition
+      condition: Math.random() > 0.7 ? 'Damaged' : Math.random() > 0.3 ? 'Operational' : 'Pristine',
+      // Random crew status
+      crewStatus: Math.random() > 0.8 ? 'Skeleton Crew' : Math.random() > 0.4 ? 'Full Crew' : 'Optimal Crew'
+    };
+  };
+
+  // Ship movement state for dynamic positioning
+  const [shipPositions, setShipPositions] = useState<Record<string, {
+    x: number; // angle in degrees
+    y: number; // distance percentage
+    heading: number;
+    speed: number;
+    movementType: number; // 0=waypoint, 1=random, 2=circular, 3=radial, 4=drift
+    randomDirection: number; // Random direction for random movement
+    lastDirectionChange: number; // Timestamp of last direction change
+    waypoint?: { x: number; y: number; reachTime: number };
+  }>>({});
 
   // Function to fetch and parse weapon details from CSV
   const fetchWeaponDetails = async (weaponName: string) => {
     try {
       console.log('🔍 Fetching weapon details for:', weaponName);
       const response = await fetch('./assets/weapons and attch (Ship) - Weapons.csv');
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       const csvText = await response.text();
       console.log('📄 CSV fetched successfully, length:', csvText.length);
       const lines = csvText.split('\n');
       console.log('📋 Total lines in CSV:', lines.length);
-      
+
       // Find the weapon in the CSV
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line || line.split(',').length < 2) continue;
-        
+
         // Handle CSV parsing with proper comma handling for quoted fields
         const columns = [];
         let current = '';
         let inQuotes = false;
-        
+
         for (let j = 0; j < line.length; j++) {
           const char = line[j];
           if (char === '"') {
@@ -167,14 +235,14 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           }
         }
         columns.push(current.trim()); // Add the last column
-        
+
         const weaponNameInCsv = columns[1]?.replace(/"/g, '').trim();
-        
+
         // Debug: Log weapon names being compared
         if (weaponNameInCsv) {
           console.log(`🔍 Comparing "${weaponName}" with "${weaponNameInCsv}"`);
         }
-        
+
         if (weaponNameInCsv === weaponName) {
           console.log('✅ Found exact match in CSV:', weaponNameInCsv);
           const details = {
@@ -192,7 +260,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           return;
         }
       }
-      
+
       console.log('⚠️ Weapon not found in CSV, available weapons:');
       // Log all available weapons for debugging
       for (let i = 1; i < Math.min(lines.length, 20); i++) {
@@ -204,7 +272,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           }
         }
       }
-      
+
       // If weapon not found in CSV, create a generic entry
       setWeaponDetails({
         name: weaponName,
@@ -237,20 +305,137 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     fetchWeaponDetails(weaponName);
   };
 
+  // Helper functions for weapon-specific firing
+  const getWeaponHeat = (weaponName: string): number => {
+    // Map weapon names to heat values based on weapon type
+    if (weaponName.toLowerCase().includes('turbolaser')) return 25;
+    if (weaponName.toLowerCase().includes('laser')) return 18;
+    if (weaponName.toLowerCase().includes('ion')) return 14;
+    if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) return 22;
+    if (weaponName.toLowerCase().includes('blaster')) return 16;
+    if (weaponName.toLowerCase().includes('tractor')) return 8;
+    return 20; // Default heat for unknown weapons
+  };
+
+  const weaponRequiresLock = (weaponName: string): boolean => {
+    // Weapons that require target lock
+    return weaponName.toLowerCase().includes('missile') ||
+      weaponName.toLowerCase().includes('torpedo') ||
+      weaponName.toLowerCase().includes('seeker');
+  };
+
+  const weaponRequiresMissiles = (weaponName: string): boolean => {
+    // Weapons that consume missile ammunition
+    return weaponName.toLowerCase().includes('missile') ||
+      weaponName.toLowerCase().includes('torpedo');
+  };
+
+  const getWeaponDamage = (weaponName: string): number => {
+    // Map weapon names to damage values based on weapon type
+    if (weaponName.toLowerCase().includes('turbolaser')) {
+      if (weaponName.toLowerCase().includes('heavy')) return 22;
+      if (weaponName.toLowerCase().includes('medium')) return 20;
+      if (weaponName.toLowerCase().includes('light')) return 18;
+      return 20;
+    }
+    if (weaponName.toLowerCase().includes('laser')) {
+      if (weaponName.toLowerCase().includes('quad')) return 16;
+      if (weaponName.toLowerCase().includes('heavy')) return 14;
+      if (weaponName.toLowerCase().includes('medium')) return 12;
+      if (weaponName.toLowerCase().includes('light')) return 10;
+      return 12;
+    }
+    if (weaponName.toLowerCase().includes('ion')) {
+      if (weaponName.toLowerCase().includes('heavy')) return 14;
+      if (weaponName.toLowerCase().includes('medium')) return 12;
+      if (weaponName.toLowerCase().includes('light')) return 10;
+      return 12;
+    }
+    if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) return 18;
+    if (weaponName.toLowerCase().includes('blaster')) return 8;
+    if (weaponName.toLowerCase().includes('tractor')) return 0; // No damage
+    return 10; // Default damage
+  };
+
+  const getWeaponSpread = (weaponName: string): number => {
+    // Map weapon names to spread/accuracy values
+    if (weaponName.toLowerCase().includes('turbolaser')) return 8; // Very accurate
+    if (weaponName.toLowerCase().includes('laser')) return 10; // Accurate
+    if (weaponName.toLowerCase().includes('ion')) return 12; // Moderate accuracy
+    if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) return 6; // Very accurate
+    if (weaponName.toLowerCase().includes('blaster')) return 14; // Less accurate
+    if (weaponName.toLowerCase().includes('tractor')) return 20; // Not for damage
+    return 12; // Default spread
+  };
+
+  const getWeaponShieldMult = (weaponName: string): number => {
+    // Map weapon names to shield damage multipliers
+    if (weaponName.toLowerCase().includes('ion')) return 1.8; // Very effective vs shields
+    if (weaponName.toLowerCase().includes('turbolaser')) return 1.0; // Standard vs shields
+    if (weaponName.toLowerCase().includes('laser')) return 1.0; // Standard vs shields
+    if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) return 1.2; // Good vs shields
+    if (weaponName.toLowerCase().includes('blaster')) return 0.8; // Less effective vs shields
+    return 1.0; // Default shield multiplier
+  };
+
+  const getWeaponHullMult = (weaponName: string): number => {
+    // Map weapon names to hull damage multipliers
+    if (weaponName.toLowerCase().includes('turbolaser')) return 1.3; // Very effective vs hull
+    if (weaponName.toLowerCase().includes('laser')) return 1.1; // Good vs hull
+    if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) return 1.4; // Very effective vs hull
+    if (weaponName.toLowerCase().includes('blaster')) return 1.2; // Good vs hull
+    if (weaponName.toLowerCase().includes('ion')) return 0.4; // Poor vs hull
+    return 1.0; // Default hull multiplier
+  };
+
+  const applyDamageToTarget = (target: EnemyShip, hit: boolean, shieldDamage: number, hullDamage: number) => {
+    if (!hit) return;
+
+    setEnemies(prev => prev.map(e => {
+      if (e.id !== target.id) return e;
+
+      let newShields = Math.max(0, e.shields - shieldDamage);
+      let newHp = e.hp;
+      if (newShields <= 0) {
+        newHp = Math.max(0, e.hp - hullDamage);
+      }
+
+      const killed = newHp <= 0 && e.alive;
+
+      let speed = e.speed, heading = e.heading;
+      if (aim === 'ENGINES' && hit) speed = Math.max(8, e.speed * 0.85);
+
+      return {
+        ...e,
+        shields: newShields,
+        hp: newHp,
+        speed,
+        heading,
+        alive: killed ? false : e.alive,
+        wreck: killed ? true : e.wreck,
+        salvageProgress: killed ? 0 : e.salvageProgress
+      };
+    }));
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
 
       if (e.code === 'Space') {
         if (overheated && reloadWindow) {
-          const marker = Math.random();
-          if (marker >= reloadWindow.start && marker <= reloadWindow.end) {
+          // Use actual reload progress instead of random
+          if (reloadProgress >= reloadWindow.start && reloadProgress <= reloadWindow.end) {
+            console.log('✅ Active reload SUCCESS!');
             setOverheated(false);
             setHeat(35);
             setReloadWindow(null);
+            setReloadProgress(0);
             setJamTimer(0);
           } else {
+            console.log('❌ Active reload FAILED!');
             setReloadWindow(null);
+            setReloadProgress(0);
             setJamTimer(1.5);
           }
           return;
@@ -543,6 +728,23 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       if (jamTimer > 0) setJamTimer(v => Math.max(0, v - dt));
       if (ecmKnock > 0) setEcmKnock(v => Math.max(0, v - dt * 1.8));
 
+      // Animate reload progress when overheated
+      if (overheated && reloadWindow) {
+        setReloadProgress(p => {
+          const newProgress = p + dt * 0.5; // Takes 2 seconds to complete
+          if (newProgress >= 1.0) {
+            // Auto-fail if player doesn't press space in time
+            console.log('⏰ Active reload TIMEOUT!');
+            setOverheated(false);
+            setReloadWindow(null);
+            setReloadProgress(0);
+            setJamTimer(2.0); // Longer jam for timeout
+            return 0;
+          }
+          return newProgress;
+        });
+      }
+
       if (!overheated && jamTimer <= 0) {
         setHeat(h => Math.max(0, h - 12 * dt));
       }
@@ -551,6 +753,123 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         const target = pilotTurnRate;
         const corrected = target - playerCorrection * 0.9;
         return lerp(err, corrected, 0.15);
+      });
+
+      // Update ship positions for dynamic movement
+      setShipPositions(prev => {
+        const updated = { ...prev };
+        Object.keys(updated).forEach(shipId => {
+          const ship = updated[shipId];
+          const step = ship.speed * dt;
+
+          // Handle different movement patterns
+          switch (ship.movementType) {
+            case 0: // Waypoint navigation (original behavior)
+              if (!ship.waypoint) {
+                ship.waypoint = {
+                  x: Math.random() * 360,
+                  y: 30 + Math.random() * 60,
+                  reachTime: now + (2000 + Math.random() * 6000)
+                };
+              }
+
+              // Check if waypoint reached or time expired
+              if (now >= ship.waypoint.reachTime ||
+                (Math.abs(wrapDeg(ship.x - ship.waypoint.x)) < 15 && Math.abs(ship.y - ship.waypoint.y) < 10)) {
+                ship.waypoint = {
+                  x: Math.random() * 360,
+                  y: 30 + Math.random() * 60,
+                  reachTime: now + (2000 + Math.random() * 6000)
+                };
+              }
+
+              // Calculate movement toward waypoint
+              const dx = wrapDeg(ship.waypoint.x - ship.x);
+              const dy = ship.waypoint.y - ship.y;
+              const targetHeading = wrapDeg(Math.atan2(dx, -dy) * 180 / Math.PI);
+
+              let headingDiff = wrapDeg(targetHeading - ship.heading);
+              if (headingDiff > 180) headingDiff -= 360;
+              if (headingDiff < -180) headingDiff += 360;
+
+              const maxTurn = 30 * dt;
+              const turnAmount = Math.sign(headingDiff) * Math.min(Math.abs(headingDiff), maxTurn);
+              const newHeading = wrapDeg(ship.heading + turnAmount);
+
+              const rad = toRad(newHeading);
+              const moveX = Math.sin(rad) * step * 0.2;
+              const moveY = -Math.cos(rad) * step * 0.1;
+
+              updated[shipId] = {
+                ...ship,
+                x: wrapDeg(ship.x + moveX),
+                y: clamp(ship.y + moveY, 25, 95),
+                heading: newHeading
+              };
+              break;
+
+            case 1: // Random movement - change direction randomly
+              // Change direction every 1-3 seconds
+              if (!ship.lastDirectionChange || now - ship.lastDirectionChange > (1000 + Math.random() * 2000)) {
+                ship.randomDirection = Math.random() * 360;
+                ship.lastDirectionChange = now;
+              }
+
+              const randomRad = toRad(ship.randomDirection);
+              const randomMoveX = Math.sin(randomRad) * step * 0.15;
+              const randomMoveY = -Math.cos(randomRad) * step * 0.08;
+
+              updated[shipId] = {
+                ...ship,
+                x: wrapDeg(ship.x + randomMoveX),
+                y: clamp(ship.y + randomMoveY, 25, 95),
+                heading: ship.randomDirection
+              };
+              break;
+
+            case 2: // Circular movement
+              const circularSpeed = step * 0.3;
+              updated[shipId] = {
+                ...ship,
+                x: wrapDeg(ship.x + circularSpeed),
+                heading: wrapDeg(ship.heading + circularSpeed * 0.5)
+              };
+              break;
+
+            case 3: // Radial movement (in/out from center)
+              const radialDirection = Math.sin(now * 0.001) > 0 ? 1 : -1; // Oscillate in/out
+              const radialMoveY = radialDirection * step * 0.1;
+              updated[shipId] = {
+                ...ship,
+                y: clamp(ship.y + radialMoveY, 25, 95),
+                heading: wrapDeg(ship.heading + step * 0.2)
+              };
+              break;
+
+            case 4: // Drift movement - very slow, minimal direction changes
+              if (!ship.lastDirectionChange || now - ship.lastDirectionChange > (5000 + Math.random() * 5000)) {
+                ship.randomDirection = wrapDeg(ship.randomDirection + (Math.random() - 0.5) * 60);
+                ship.lastDirectionChange = now;
+              }
+
+              const driftRad = toRad(ship.randomDirection);
+              const driftMoveX = Math.sin(driftRad) * step * 0.05; // Very slow
+              const driftMoveY = -Math.cos(driftRad) * step * 0.03;
+
+              updated[shipId] = {
+                ...ship,
+                x: wrapDeg(ship.x + driftMoveX),
+                y: clamp(ship.y + driftMoveY, 25, 95),
+                heading: wrapDeg(ship.heading + step * 0.1)
+              };
+              break;
+
+            default:
+              // Fallback to waypoint movement
+              break;
+          }
+        });
+        return updated;
       });
 
       setEnemies(prev => prev.map(e => {
@@ -641,6 +960,35 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     ctx.fillStyle = '#00ffff';
     ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
 
+    // Draw yellow dots for ships from long range comms
+    ships.forEach(ship => {
+      const shipPos = shipPositions[ship.id];
+      if (!shipPos) return; // Skip if position not initialized yet
+
+      // Use dynamic position from shipPositions
+      const angleRad = toRad(shipPos.x);
+      const radarDistance = (shipPos.y / 100) * RADAR_RADIUS;
+      const sx = cx + Math.cos(angleRad) * radarDistance;
+      const sy = cy + Math.sin(angleRad) * radarDistance;
+
+      // Draw yellow dot for ship
+      ctx.fillStyle = pinnedShips[ship.id] === 'red' ? '#ff4444' :
+        pinnedShips[ship.id] === 'white' ? '#ffffff' : '#ffd700';
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Add subtle glow for pinned ships
+      if (pinnedShips[ship.id]) {
+        ctx.shadowColor = pinnedShips[ship.id] === 'red' ? '#ff4444' : '#ffffff';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    });
+
     enemies.forEach(enemy => {
       const angleRad = toRad(enemy.x);
       const distance = (enemy.y / 100) * RADAR_RADIUS;
@@ -726,11 +1074,27 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       ctx.font = '12px Orbitron, monospace';
       ctx.fillText(overheated ? 'OVERHEATED — press SPACE in window!' : 'JAMMED...', 20, 110);
       if (overheated && reloadWindow) {
-        const x = 20, y = 120, w = 200, h = 8;
+        const x = 20, y = 120, w = 200, h = 12;
+
+        // Draw background bar
+        ctx.fillStyle = 'rgba(50, 50, 50, 0.8)';
+        ctx.fillRect(x, y, w, h);
         ctx.strokeStyle = '#cccccc';
         ctx.strokeRect(x, y, w, h);
-        ctx.fillStyle = 'rgba(0,255,136,0.4)';
+
+        // Draw green success window
+        ctx.fillStyle = 'rgba(0,255,136,0.6)';
         ctx.fillRect(x + w * reloadWindow.start, y, w * (reloadWindow.end - reloadWindow.start), h);
+
+        // Draw moving progress indicator
+        ctx.fillStyle = '#ffffff';
+        const indicatorX = x + w * reloadProgress;
+        ctx.fillRect(indicatorX - 2, y - 2, 4, h + 4);
+
+        // Draw progress text
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px Orbitron, monospace';
+        ctx.fillText(`${Math.round(reloadProgress * 100)}%`, x + w + 10, y + h - 2);
       }
     }
 
@@ -765,11 +1129,37 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     const onMove = (e: MouseEvent) => {
       const rect = canvasRef.current?.getBoundingClientRect();
       if (!rect) return;
-      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+      mouseRef.current = { x: mouseX, y: mouseY };
+      setMousePosition({ x: e.clientX, y: e.clientY }); // Global mouse position for tooltip
+
+      // Check if mouse is over any ship dot
+      const cx = R_WIDTH / 2, cy = R_HEIGHT / 2;
+      let foundShip: Ship | null = null;
+
+      ships.forEach(ship => {
+        const shipPos = shipPositions[ship.id];
+        if (!shipPos) return; // Skip if position not initialized yet
+
+        // Use dynamic position from shipPositions
+        const angleRad = toRad(shipPos.x);
+        const radarDistance = (shipPos.y / 100) * RADAR_RADIUS;
+        const sx = cx + Math.cos(angleRad) * radarDistance;
+        const sy = cy + Math.sin(angleRad) * radarDistance;
+
+        // Check if mouse is within ship dot radius
+        const distanceToShip = Math.hypot(mouseX - sx, mouseY - sy);
+        if (distanceToShip <= 8) { // 8px hover radius
+          foundShip = ship;
+        }
+      });
+
+      setHoveredShip(foundShip);
     };
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, []);
+  }, [ships, pinnedShips]);
 
   useEffect(() => {
     const i = setInterval(() => {
@@ -820,17 +1210,102 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     if (!selectedEnemy) return;
     const target = selectedEnemy;
 
-    if (AMMO_DEF[ammo].requiresLock && !locked) return;
-    if (ammo === 'SEEKER' && missiles <= 0) return;
-    if (overheated || jamTimer > 0) return;
+    // Check if a specific weapon is selected
+    if (selectedWeapon) {
+      console.log('🔫 Firing selected weapon:', selectedWeapon);
 
-    const shotHeat = AMMO_DEF[ammo].heatPerShot;
-    const newHeat = heat + shotHeat;
-    setHeat(newHeat);
-    if (newHeat >= 100) {
-      setOverheated(true);
-      setReloadWindow({ start: 0.45, end: 0.62 });
-      return;
+      // Weapon-specific firing logic
+      const weaponHeat = getWeaponHeat(selectedWeapon);
+      const requiresLock = weaponRequiresLock(selectedWeapon);
+      const requiresMissiles = weaponRequiresMissiles(selectedWeapon);
+
+      // Check weapon-specific requirements
+      if (requiresLock && !locked) {
+        console.log('❌ Weapon requires lock but not locked');
+        return;
+      }
+      if (requiresMissiles && missiles <= 0) {
+        console.log('❌ Weapon requires missiles but none available');
+        return;
+      }
+      if (overheated || jamTimer > 0) {
+        console.log('❌ Weapon system overheated or jammed');
+        return;
+      }
+
+      const newHeat = heat + weaponHeat;
+      setHeat(newHeat);
+      if (newHeat >= 100) {
+        setOverheated(true);
+        setReloadWindow({ start: 0.45, end: 0.62 });
+        return;
+      }
+
+      // Consume missiles if needed
+      if (requiresMissiles) {
+        setMissiles(m => Math.max(0, m - 1));
+      }
+
+      // Calculate weapon-specific damage
+      const weaponDamage = getWeaponDamage(selectedWeapon);
+      const weaponSpread = getWeaponSpread(selectedWeapon);
+
+      // Use weapon-specific values for damage calculation
+      const baseSpread = weaponSpread;
+      const spread = baseSpread + Math.abs(trackError) * 6;
+      const solveBoost = 0.35 + solveQuality * 0.65;
+      const effectiveSpread = spread;
+      const hitChance = clamp(solveBoost * (1.0 - effectiveSpread / 120), 0.05, 0.95);
+
+      const roll = Math.random();
+      const hit = roll < hitChance;
+
+      let damage = weaponDamage;
+      damage *= SUBSYS_DEF[aim].dmgMult;
+      let shieldDamage = 0, hullDamage = 0;
+      if (hit) {
+        const weaponShieldMult = getWeaponShieldMult(selectedWeapon);
+        const weaponHullMult = getWeaponHullMult(selectedWeapon);
+
+        shieldDamage = damage * weaponShieldMult;
+        let remainingShield = Math.max(0, target.shields - shieldDamage);
+        const shieldActuallyDealt = target.shields - remainingShield;
+        const leftover = damage - shieldActuallyDealt;
+        hullDamage = Math.max(0, leftover * weaponHullMult);
+      }
+
+      // Apply damage and emit weapon fired event
+      applyDamageToTarget(target, hit, shieldDamage, hullDamage);
+
+      socket?.emit('weapon_fired', {
+        room: roomRef.current,
+        targetId: target.id,
+        hit,
+        weapon: selectedWeapon,
+        aim,
+        damage: { shieldDamage, hullDamage },
+        solveQuality,
+        spread,
+        locked
+      });
+
+      return; // Exit early for weapon-specific firing
+    } else {
+      // Fallback to generic ammo system if no weapon selected
+      if (AMMO_DEF[ammo].requiresLock && !locked) return;
+      if (ammo === 'SEEKER' && missiles <= 0) return;
+      if (overheated || jamTimer > 0) return;
+
+      const shotHeat = AMMO_DEF[ammo].heatPerShot;
+      const newHeat = heat + shotHeat;
+      setHeat(newHeat);
+      if (newHeat >= 100) {
+        setOverheated(true);
+        setReloadWindow({ start: 0.45, end: 0.62 });
+        return;
+      }
+
+      if (ammo === 'SEEKER') setMissiles(m => Math.max(0, m - 1));
     }
 
     const baseSpread = 10;
@@ -908,6 +1383,33 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     const my = e.clientY - rect.top;
     const cx = R_WIDTH / 2, cy = R_HEIGHT / 2;
 
+    // First check for yellow ship dots
+    let clickedShip: Ship | null = null;
+    let bestShipD = 9999;
+
+    ships.forEach(ship => {
+      const shipPos = shipPositions[ship.id];
+      if (!shipPos) return;
+
+      const angleRad = toRad(shipPos.x);
+      const radarDistance = (shipPos.y / 100) * RADAR_RADIUS;
+      const sx = cx + Math.cos(angleRad) * radarDistance;
+      const sy = cy + Math.sin(angleRad) * radarDistance;
+
+      const d = Math.hypot(sx - mx, sy - my);
+      if (d < 12 && d < bestShipD) { // 12px click radius for ships
+        bestShipD = d;
+        clickedShip = ship;
+      }
+    });
+
+    if (clickedShip) {
+      setSelectedShip(clickedShip);
+      setSelectedShipStats(generateShipStats(clickedShip));
+      return; // Don't check for enemy ships if we clicked a yellow dot
+    }
+
+    // Then check for enemy ships
     let bestId: string | null = null;
     let bestD = 9999;
 
@@ -924,6 +1426,9 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
 
     if (bestId) {
       setSelectedEnemyId(bestId);
+      // Clear ship selection when selecting enemy
+      setSelectedShip(null);
+      setSelectedShipStats(null);
     }
   };
 
@@ -979,6 +1484,64 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       unsubscribe();
     };
   }, []);
+
+  // Initialize ship positions when ships change
+  useEffect(() => {
+    setShipPositions(prev => {
+      const newPositions = { ...prev };
+
+      ships.forEach(ship => {
+        if (!newPositions[ship.id]) {
+          // Initialize new ship with random position and movement
+          const shipHash = ship.id.split('').reduce((a, b) => {
+            a = ((a << 5) - a) + b.charCodeAt(0);
+            return a & a;
+          }, 0);
+
+          // Determine movement pattern based on ship hash
+          const movementType = Math.abs(shipHash % 5); // 5 different movement patterns
+
+          // Create more varied distance distribution - many ships further out
+          let distance;
+          const distanceRoll = Math.abs(shipHash % 100);
+          if (distanceRoll < 20) {
+            // 20% close range (30-50%)
+            distance = 30 + Math.abs(shipHash % 20);
+          } else if (distanceRoll < 40) {
+            // 20% medium range (50-70%)
+            distance = 50 + Math.abs(shipHash % 20);
+          } else {
+            // 60% long range (70-95%)
+            distance = 70 + Math.abs(shipHash % 25);
+          }
+
+          newPositions[ship.id] = {
+            x: Math.abs(shipHash % 360), // Starting angle
+            y: distance, // Distance from center with wider distribution
+            heading: Math.abs(shipHash % 360), // Initial heading
+            speed: 15 + Math.abs(shipHash % 25), // Speed 15-40
+            movementType, // 0=waypoint, 1=random, 2=circular, 3=radial, 4=drift
+            randomDirection: Math.random() * 360, // Random direction for random movement
+            lastDirectionChange: performance.now(),
+            waypoint: {
+              x: Math.random() * 360,
+              y: Math.max(25, Math.min(95, distance + (Math.random() - 0.5) * 30)), // Waypoint near current distance
+              reachTime: performance.now() + (2000 + Math.random() * 6000)
+            }
+          };
+        }
+      });
+
+      // Remove positions for ships that no longer exist
+      Object.keys(newPositions).forEach(shipId => {
+        if (!ships.find(ship => ship.id === shipId)) {
+          delete newPositions[shipId];
+        }
+      });
+
+      return newPositions;
+    });
+  }, [ships]);
 
   useEffect(() => {
     if (!socket) return;
@@ -1040,7 +1603,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           }}>
             PRIMARY WEAPONS
           </div>
-          
+
           {/* Dynamic Primary Weapons */}
           {primaryWeapons.length === 0 ? (
             <div style={{
@@ -1053,8 +1616,8 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             </div>
           ) : (
             primaryWeapons.map((weapon, index) => (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 onClick={() => handleWeaponClick(weapon)}
                 style={{
                   background: selectedWeapon === weapon ? 'rgba(255, 107, 0, 0.4)' : 'rgba(255, 107, 0, 0.2)',
@@ -1067,9 +1630,9 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                   transition: 'all 0.2s ease'
                 }}
               >
-                <div style={{ 
-                  color: '#ff6b00', 
-                  fontSize: '11px', 
+                <div style={{
+                  color: '#ff6b00',
+                  fontSize: '11px',
                   fontWeight: 'bold',
                   lineHeight: '1.2'
                 }}>
@@ -1103,7 +1666,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           }}>
             SECONDARY WEAPONS
           </div>
-          
+
           {/* Dynamic Secondary Weapons */}
           {secondaryWeapons.length === 0 ? (
             <div style={{
@@ -1116,8 +1679,8 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             </div>
           ) : (
             secondaryWeapons.map((weapon, index) => (
-              <div 
-                key={index} 
+              <div
+                key={index}
                 onClick={() => handleWeaponClick(weapon)}
                 style={{
                   background: selectedWeapon === weapon ? 'rgba(0, 255, 136, 0.4)' : 'rgba(0, 255, 136, 0.2)',
@@ -1130,9 +1693,9 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                   transition: 'all 0.2s ease'
                 }}
               >
-                <div style={{ 
-                  color: '#00ff88', 
-                  fontSize: '11px', 
+                <div style={{
+                  color: '#00ff88',
+                  fontSize: '11px',
                   fontWeight: 'bold',
                   lineHeight: '1.2'
                 }}>
@@ -1142,6 +1705,77 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             ))
           )}
         </div>
+
+        {/* Ship Information Panel */}
+        {selectedShipStats && (
+          <div style={{
+            position: 'absolute',
+            left: '20px',
+            bottom: '160px', // Above weapon details panel
+            width: '304px', // Spans both weapon containers
+            height: '130px',
+            border: '2px solid #ffd700',
+            borderRadius: '8px',
+            background: 'rgba(255, 215, 0, 0.1)',
+            padding: '10px',
+            boxShadow: '0 0 15px rgba(255, 215, 0, 0.3)'
+          }}>
+            <div style={{
+              color: '#ffd700',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: '8px',
+              textShadow: '0 0 5px #ffd700'
+            }}>
+              CIVILIAN VESSEL ANALYSIS
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '8px',
+              fontSize: '9px'
+            }}>
+              <div>
+                <div style={{ color: '#ffd700', fontWeight: 'bold', marginBottom: '2px' }}>
+                  {selectedShipStats.name}
+                </div>
+                <div style={{ color: '#ffeb99' }}>
+                  <div>Silhouette: {selectedShipStats.silhouette}</div>
+                  <div>Speed: {selectedShipStats.speed} | Handling: {selectedShipStats.handling}</div>
+                  <div>Defense: {selectedShipStats.defense[0]}/{selectedShipStats.defense[1]} | Armor: {selectedShipStats.armor}</div>
+                  <div>Hull: {selectedShipStats.currentHull}/{selectedShipStats.hullTrauma}</div>
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#ffeb99' }}>
+                  <div>Strain: {selectedShipStats.currentStrain}/{selectedShipStats.systemStrain}</div>
+                  <div>Crew: {selectedShipStats.crew}</div>
+                  <div>Passengers: {selectedShipStats.passengers}</div>
+                  <div>Encumbrance: {selectedShipStats.encumbrance}</div>
+                </div>
+              </div>
+            </div>
+
+            <div style={{
+              marginTop: '6px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              fontSize: '8px'
+            }}>
+              <span style={{ color: '#ffd700', fontWeight: 'bold' }}>
+                Status: <span style={{ color: '#ffeb99' }}>{selectedShipStats.condition}</span>
+              </span>
+              <span style={{ color: '#ffd700', fontWeight: 'bold' }}>
+                Crew: <span style={{ color: '#ffeb99' }}>{selectedShipStats.crewStatus}</span>
+              </span>
+              <span style={{ color: '#ffd700', fontWeight: 'bold' }}>
+                Value: <span style={{ color: '#ffeb99' }}>{(selectedShipStats.cost / 1000).toFixed(0)}k</span>
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Weapon Details Panel */}
         {weaponDetails && (
@@ -1167,7 +1801,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             }}>
               WEAPON SPECIFICATIONS
             </div>
-            
+
             <div style={{
               display: 'grid',
               gridTemplateColumns: '1fr 1fr',
@@ -1192,7 +1826,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                 </div>
               </div>
             </div>
-            
+
             <div style={{
               marginTop: '6px',
               color: '#ffeb99',
@@ -1211,6 +1845,63 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           onClick={handleClickCanvas}
           style={{ borderRadius: '12px', cursor: 'crosshair', position: 'relative', left: '197px' }}
         />
+
+        {/* Ship Tooltip */}
+        {hoveredShip && (
+          <div style={{
+            position: 'fixed',
+            left: mousePosition.x + 10,
+            top: mousePosition.y - 10,
+            background: 'rgba(0, 0, 0, 0.9)',
+            border: '2px solid #ffd700',
+            borderRadius: '6px',
+            padding: '8px 12px',
+            color: '#ffd700',
+            fontSize: '11px',
+            fontFamily: 'Orbitron, monospace',
+            zIndex: 1000,
+            pointerEvents: 'none',
+            boxShadow: '0 0 15px rgba(255, 215, 0, 0.4)',
+            maxWidth: '200px'
+          }}>
+            <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#ffffff' }}>
+              {hoveredShip.designation || 'Undesignated Vessel'}
+            </div>
+            <div style={{ marginBottom: '2px' }}>
+              Status: <span style={{
+                color: hoveredShip.status === 'Active' ? '#00ff00' : '#ffff00',
+                fontWeight: 'bold'
+              }}>
+                {hoveredShip.status}
+              </span>
+            </div>
+            <div style={{ marginBottom: '2px' }}>
+              Type: <span style={{ color: '#80d0ff' }}>
+                {hoveredShip.type.charAt(0).toUpperCase() + hoveredShip.type.slice(1)}
+              </span>
+            </div>
+            <div style={{ marginBottom: '2px' }}>
+              Age: <span style={{ color: '#80d0ff' }}>{hoveredShip.age} cycles</span>
+            </div>
+            {hoveredShip.groupId && (
+              <div style={{ marginBottom: '2px' }}>
+                Group: <span style={{ color: '#80d0ff' }}>Convoy</span>
+              </div>
+            )}
+            {pinnedShips[hoveredShip.id] && (
+              <div style={{
+                marginTop: '4px',
+                padding: '2px 4px',
+                background: pinnedShips[hoveredShip.id] === 'red' ? 'rgba(255, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+                borderRadius: '3px',
+                fontSize: '10px',
+                fontWeight: 'bold'
+              }}>
+                {pinnedShips[hoveredShip.id] === 'red' ? '🔴 PRIORITY TARGET' : '⚪ TRACKED'}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div style={{
@@ -1399,12 +2090,39 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
           <button
             onClick={handleFire}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(45deg,#00ffaa,#00ddff)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 255, 136, 0.6)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(45deg,#00ff88,#00ffff)';
+              e.currentTarget.style.transform = 'scale(1)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+            onMouseDown={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(45deg,#ff4444,#ff6666)';
+              e.currentTarget.style.transform = 'scale(0.95)';
+              e.currentTarget.style.boxShadow = '0 0 30px rgba(255, 68, 68, 0.8)';
+            }}
+            onMouseUp={(e) => {
+              e.currentTarget.style.background = 'linear-gradient(45deg,#00ffaa,#00ddff)';
+              e.currentTarget.style.transform = 'scale(1.05)';
+              e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 255, 136, 0.6)';
+            }}
             style={{
-              padding: '10px', borderRadius: 8, border: '1px solid #0f0',
-              background: 'linear-gradient(45deg,#00ff88,#00ffff)', color: '#000', fontWeight: 900, cursor: 'pointer'
+              padding: '10px',
+              borderRadius: 8,
+              border: '1px solid #0f0',
+              background: 'linear-gradient(45deg,#00ff88,#00ffff)',
+              color: '#000',
+              fontWeight: 900,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              userSelect: 'none'
             }}
           >
-            FIRE (Space)
+            {selectedWeapon ? `FIRE ${selectedWeapon.toUpperCase()}` : 'FIRE (Space)'}
           </button>
           <button
             onClick={handleHoldSalvage}
