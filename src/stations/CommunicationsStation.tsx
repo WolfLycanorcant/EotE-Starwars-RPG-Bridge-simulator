@@ -46,7 +46,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
 
   // Add ref for isAnalysing to avoid stale closure in event listener
   const isAnalysingRef = useRef(isAnalysing);
-  
+
   // LRC streaming ref
   const lrcRef = useRef<HTMLDivElement | null>(null);
   const roomRef = useRef<string>('default');
@@ -312,7 +312,8 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       setCurrentRegion(shipStore.getCurrentRegion() as any);
     });
 
-    return unsubscribe;
+    // Return cleanup function or void - explicitly typed
+    return typeof unsubscribe === 'function' ? unsubscribe as (() => void) : undefined;
   }, []);
 
   // Initialize socket listeners
@@ -1065,7 +1066,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
             {currentRegion}
           </span>
         </h3>
-        <div 
+        <div
           ref={lrcRef}
           style={{
             fontSize: '11px',
