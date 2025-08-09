@@ -1031,20 +1031,25 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       const room = roomRef.current;
                       const freq = states.communications?.primaryFrequency ?? 121.5;
 
+                      // Create the message object
+                      const message: CommunicationMessage = {
+                        id: Date.now().toString(),
+                        from: messageFrom,              // <- dynamic
+                        to: 'All Stations',
+                        content: messageResponse,
+                        priority: messagePriority,
+                        frequency: freq,
+                        timestamp: new Date(),
+                        onAir: `(${freq.toFixed(1)} MHz)`               // <-- new
+                      };
+
+                      // Add to GM's transmission log
+                      setCommsTransmissions(prev => [...prev, message]);
+
                       // use the *same* channel Comms already listens for
                       socket?.emit('gm_broadcast', {
                         type: 'new_message',
-                        value: {
-                          id: Date.now().toString(),
-                          from: messageFrom,              // <- dynamic
-                          to: 'All Stations',
-                          content: messageResponse,
-                          priority: messagePriority,
-                          frequency: freq,
-                          timestamp: Date.now(),
-                          analysisMode: messageAnalysis,        // <-- new
-                          onAir: `(${freq.toFixed(1)} MHz)`               // <-- new
-                        },
+                        value: message,
                         room,
                         source: 'gm'
                       });
@@ -1060,20 +1065,25 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       const room = roomRef.current;
                       const freq = states.communications?.primaryFrequency ?? 121.5;
 
+                      // Create the message object
+                      const scanMessage: CommunicationMessage = {
+                        id: Date.now().toString(),
+                        from: messageFrom,              // <- dynamic
+                        to: 'All Stations',
+                        content: messageResponse,
+                        priority: messagePriority,
+                        frequency: freq,
+                        timestamp: new Date(),
+                        onAir: `(${freq.toFixed(1)} MHz)`               // <-- new
+                      };
+
+                      // Add to GM's transmission log
+                      setCommsTransmissions(prev => [...prev, scanMessage]);
+
                       // Send the same transmission as Send Transmission button
                       socket?.emit('gm_broadcast', {
                         type: 'new_message',
-                        value: {
-                          id: Date.now().toString(),
-                          from: messageFrom,              // <- dynamic
-                          to: 'All Stations',
-                          content: messageResponse,
-                          priority: messagePriority,
-                          frequency: freq,
-                          timestamp: Date.now(),
-                          analysisMode: messageAnalysis,        // <-- new
-                          onAir: `(${freq.toFixed(1)} MHz)`               // <-- new
-                        },
+                        value: scanMessage,
                         room,
                         source: 'gm'
                       });
@@ -1104,27 +1114,11 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               {/* LIVE COMMUNICATION LOG */}
               <div style={{ marginTop: 15, border: '1px solid var(--gm-blue)', borderRadius: 4, padding: 10 }}>
                 <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 6 }}>COMMS TRANSMISSION LOG</div>
-                <div style={{ 
-                  maxHeight: '500px', 
+                <div style={{
+                  maxHeight: '500px',
                   minHeight: '200px',
-                  overflowY: 'auto', 
+                  overflowY: 'auto',
                   fontSize: '0.7rem',
-                  scrollbarWidth: 'thin',
-                  scrollbarColor: 'var(--gm-blue) rgba(0,0,0,0.3)',
-                  '&::-webkit-scrollbar': {
-                    width: '8px',
-                  },
-                  '&::-webkit-scrollbar-track': {
-                    background: 'rgba(0,0,0,0.3)',
-                    borderRadius: '4px',
-                  },
-                  '&::-webkit-scrollbar-thumb': {
-                    backgroundColor: 'var(--gm-blue)',
-                    borderRadius: '4px',
-                  },
-                  '&::-webkit-scrollbar-thumb:hover': {
-                    backgroundColor: 'var(--gm-green)',
-                  },
                   paddingRight: '4px'
                 }}>
                   {commsTransmissions.length === 0 ? (
@@ -1751,7 +1745,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     {(pilotState.shieldStatus ?? 0).toFixed(0)}%
                   </span>
                 </Row>
-                
+
                 {/* Shield Slider Control */}
                 <div style={{ marginTop: 10, marginBottom: 10 }}>
                   <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
@@ -1773,7 +1767,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                         source: 'gm'
                       });
                     }}
-                    style={{ 
+                    style={{
                       width: '100%',
                       background: 'transparent',
                       cursor: 'pointer'
@@ -2026,7 +2020,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     {(pilotState.fuelLevel ?? 0).toFixed(0)}%
                   </span>
                 </Row>
-                
+
                 {/* Fuel Slider Control */}
                 <div style={{ marginTop: 10, marginBottom: 10 }}>
                   <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
@@ -2041,13 +2035,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     onChange={(e) => {
                       const newFuelLevel = parseInt(e.target.value);
                       console.log('⛽ GM setting fuel level via slider to:', newFuelLevel);
-                      
+
                       // Update local GM state immediately for responsive UI
                       setPilotState(prev => ({
                         ...prev,
                         fuelLevel: newFuelLevel
                       }));
-                      
+
                       // Also update the states object for consistency
                       setStates(prev => ({
                         ...prev,
@@ -2056,7 +2050,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                           fuelLevel: newFuelLevel
                         }
                       }));
-                      
+
                       // Broadcast to navigation station
                       socket?.emit('gm_broadcast', {
                         type: 'fuel_control',
@@ -2065,7 +2059,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                         source: 'gm'
                       });
                     }}
-                    style={{ 
+                    style={{
                       width: '100%',
                       background: 'transparent',
                       cursor: 'pointer'
@@ -2085,14 +2079,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitRed onClick={() => {
                     const newFuelLevel = 0;
                     console.log('⛽ GM setting fuel to EMPTY (0%)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
                       value: { action: 'set_level', level: newFuelLevel },
@@ -2103,14 +2097,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitRed onClick={() => {
                     const newFuelLevel = 10;
                     console.log('⛽ GM setting fuel to CRITICAL (10%)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
                       value: { action: 'set_level', level: newFuelLevel },
@@ -2121,14 +2115,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitButton onClick={() => {
                     const newFuelLevel = 75;
                     console.log('⛽ GM setting fuel to NORMAL (75%)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
                       value: { action: 'set_level', level: newFuelLevel },
@@ -2139,14 +2133,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitButton onClick={() => {
                     const newFuelLevel = 100;
                     console.log('⛽ GM setting fuel to FULL (100%)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, fuelLevel: newFuelLevel }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, fuelLevel: newFuelLevel }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'fuel_control',
                       value: { action: 'set_level', level: newFuelLevel },
@@ -2171,7 +2165,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     {(pilotState.engineTemp ?? 0).toFixed(0)}°C
                   </span>
                 </Row>
-                
+
                 {/* Temperature Slider Control */}
                 <div style={{ marginTop: 10, marginBottom: 10 }}>
                   <label style={{ display: 'block', marginBottom: '5px', color: '#00ffff', fontSize: '0.8rem' }}>
@@ -2186,13 +2180,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     onChange={(e) => {
                       const newEngineTemp = parseInt(e.target.value);
                       console.log('🌡️ GM setting engine temperature via slider to:', newEngineTemp);
-                      
+
                       // Update local GM state immediately for responsive UI
                       setPilotState(prev => ({
                         ...prev,
                         engineTemp: newEngineTemp
                       }));
-                      
+
                       // Also update the states object for consistency
                       setStates(prev => ({
                         ...prev,
@@ -2201,7 +2195,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                           engineTemp: newEngineTemp
                         }
                       }));
-                      
+
                       // Broadcast to navigation station
                       socket?.emit('gm_broadcast', {
                         type: 'engine_temp_control',
@@ -2210,7 +2204,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                         source: 'gm'
                       });
                     }}
-                    style={{ 
+                    style={{
                       width: '100%',
                       background: 'linear-gradient(90deg, #00ff88 0%, #ffff00 50%, #ff8800 75%, #ff0040 100%)',
                       height: '6px',
@@ -2234,14 +2228,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitButton onClick={() => {
                     const newEngineTemp = 20;
                     console.log('🌡️ GM setting engine temp to COLD (20°C)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, engineTemp: newEngineTemp }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'engine_temp_control',
                       value: { action: 'set_temperature', temperature: newEngineTemp },
@@ -2252,14 +2246,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitButton onClick={() => {
                     const newEngineTemp = 45;
                     console.log('🌡️ GM setting engine temp to NORMAL (45°C)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, engineTemp: newEngineTemp }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'engine_temp_control',
                       value: { action: 'set_temperature', temperature: newEngineTemp },
@@ -2270,14 +2264,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitButton onClick={() => {
                     const newEngineTemp = 75;
                     console.log('🌡️ GM setting engine temp to WARM (75°C)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, engineTemp: newEngineTemp }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'engine_temp_control',
                       value: { action: 'set_temperature', temperature: newEngineTemp },
@@ -2288,14 +2282,14 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <EmitRed onClick={() => {
                     const newEngineTemp = 95;
                     console.log('🌡️ GM setting engine temp to CRITICAL (95°C)');
-                    
+
                     // Update local GM state immediately
                     setPilotState(prev => ({ ...prev, engineTemp: newEngineTemp }));
                     setStates(prev => ({
                       ...prev,
                       navigation: { ...prev.navigation, engineTemp: newEngineTemp }
                     }));
-                    
+
                     socket?.emit('gm_broadcast', {
                       type: 'engine_temp_control',
                       value: { action: 'set_temperature', temperature: newEngineTemp },
@@ -2513,22 +2507,22 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
 
               {/* Weapon Management Controls */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                border: '1px solid var(--gm-blue)', 
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                border: '1px solid var(--gm-blue)',
                 borderRadius: '4px',
                 backgroundColor: 'rgba(0, 136, 255, 0.1)'
               }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-blue)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-blue)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
                 }}>
                   WEAPON MANAGEMENT:
                 </div>
-                
+
                 {/* Primary Weapons Management */}
                 <div style={{ marginBottom: '10px' }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--gm-yellow)', marginBottom: '4px' }}>
@@ -2643,22 +2637,22 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               </div>
 
               {/* Enemy Spawning Controls */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                border: '1px solid var(--gm-red)', 
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                border: '1px solid var(--gm-red)',
                 borderRadius: '4px',
                 backgroundColor: 'rgba(255, 0, 64, 0.1)'
               }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-red)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-red)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
                 }}>
                   ENEMY SPAWNING:
                 </div>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                   <EmitButton onClick={() => {
                     const enemyId = `enemy-${Date.now()}`;
@@ -2676,7 +2670,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Fighter
                   </EmitButton>
-                  
+
                   <EmitButton onClick={() => {
                     const enemyId = `cruiser-${Date.now()}`;
                     sendBroadcast('spawn_enemy_ship', {
@@ -2704,7 +2698,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Wave (3)
                   </EmitButton>
-                  
+
                   <EmitRed onClick={() => {
                     const bossId = `boss-${Date.now()}`;
                     sendBroadcast('boss_spawn', {
@@ -2722,7 +2716,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     ECM Burst
                   </EmitButton>
-                  
+
                   <EmitRed onClick={() => {
                     sendBroadcast('clear_all_enemies', {});
                   }}>
@@ -2732,22 +2726,22 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               </div>
 
               {/* Ally Spawning Controls */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                border: '1px solid var(--gm-green)', 
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                border: '1px solid var(--gm-green)',
                 borderRadius: '4px',
                 backgroundColor: 'rgba(0, 255, 136, 0.1)'
               }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-green)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-green)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
                 }}>
                   ALLY SPAWNING:
                 </div>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                   <EmitButton onClick={() => {
                     const allyId = `ally-${Date.now()}`;
@@ -2766,7 +2760,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Ally Fighter
                   </EmitButton>
-                  
+
                   <EmitButton onClick={() => {
                     const allyId = `ally-cruiser-${Date.now()}`;
                     sendBroadcast('spawn_ally_ship', {
@@ -2796,7 +2790,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Squadron (4)
                   </EmitButton>
-                  
+
                   <EmitButton onClick={() => {
                     sendBroadcast('clear_all_allies', {});
                   }}>
@@ -2806,22 +2800,22 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               </div>
 
               {/* Neutral Spawning Controls */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                border: '1px solid var(--gm-yellow)', 
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                border: '1px solid var(--gm-yellow)',
                 borderRadius: '4px',
                 backgroundColor: 'rgba(255, 215, 0, 0.1)'
               }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-yellow)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-yellow)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
                 }}>
                   NEUTRAL SPAWNING:
                 </div>
-                
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                   <EmitButton onClick={() => {
                     const neutralId = `neutral-${Date.now()}`;
@@ -2840,7 +2834,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Trader
                   </EmitButton>
-                  
+
                   <EmitButton onClick={() => {
                     const neutralId = `neutral-transport-${Date.now()}`;
                     sendBroadcast('spawn_neutral_ship', {
@@ -2870,7 +2864,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   }}>
                     Spawn Convoy (3)
                   </EmitButton>
-                  
+
                   <EmitButton onClick={() => {
                     sendBroadcast('clear_all_neutrals', {});
                   }}>

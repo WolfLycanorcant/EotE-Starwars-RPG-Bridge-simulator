@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { shipStore, Ship } from '../stores/shipStore';
 
-type Subsystem = 'ENGINES' | 'WEAPONS' | 'SHIELDS' | 'COMMS';
+type Subsystem = 'ENGINES' | 'WEAPONS' | 'SHIELDS' | 'COMMS' | 'ANYWHERE';
 type Ammo = 'KINETIC' | 'ION' | 'SEEKER' | 'PIERCING';
 
 interface EnemyShip {
@@ -60,7 +60,8 @@ const SUBSYS_DEF: Record<Subsystem, { name: string; dmgMult: number; special?: s
   ENGINES: { name: 'ENGINES', dmgMult: 1.0, special: 'slow_on_hit' },
   WEAPONS: { name: 'WEAPONS', dmgMult: 1.0, special: 'accuracy_debuff' },
   SHIELDS: { name: 'SHIELDS', dmgMult: 1.15 },
-  COMMS: { name: 'COMMS', dmgMult: 0.9, special: 'lock_weaken' }
+  COMMS: { name: 'COMMS', dmgMult: 0.9, special: 'lock_weaken' },
+  ANYWHERE: { name: 'ANYWHERE', dmgMult: 1.0, special: 'random_targeting' }
 };
 
 const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) => {
@@ -2251,7 +2252,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Subsystem Aim</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            {(['ENGINES', 'WEAPONS', 'SHIELDS', 'COMMS'] as Subsystem[]).map(s => (
+            {(['ENGINES', 'WEAPONS', 'SHIELDS', 'COMMS', 'ANYWHERE'] as Subsystem[]).map(s => (
               <button
                 key={s}
                 onClick={() => setAim(s)}

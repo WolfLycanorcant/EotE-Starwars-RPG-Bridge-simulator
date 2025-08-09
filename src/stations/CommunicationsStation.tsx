@@ -897,7 +897,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       </div>
 
       {/* Communication Channels */}
-      <div style={{ ...panelStyle, height: '240px' }}>
+      <div style={{ ...panelStyle, height: '320px' }}>
         <h3 style={panelTitleStyle}>COMMUNICATION CHANNELS</h3>
 
         {/* Frequency Slider */}
@@ -985,10 +985,11 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
               { name: 'Emergency', freq: 121.5, color: '#ff0000' },
               { name: 'Command', freq: 243.0, color: '#ffd700' },
               { name: 'Medical', freq: 156.8, color: '#ff6b6b' },
-              { name: 'Security', freq: 453.212, color: '#a8e6cf' },
               { name: 'Engineering', freq: 467.775, color: '#4ecdc4' },
+              { name: 'Tactical', freq: 462.675, color: '#ff8c42' },
               { name: 'Navigation', freq: 156.05, color: '#95e1d3' },
-              { name: 'Tactical', freq: 462.675, color: '#ff8c42' }
+              { name: 'Security', freq: 453.212, color: '#a8e6cf' },
+              { name: 'Out of Control', freq: 999.9, color: '#ff1744' }
             ].map(channel => (
               <button
                 key={channel.name}
