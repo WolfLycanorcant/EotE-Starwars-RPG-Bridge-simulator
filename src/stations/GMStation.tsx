@@ -1104,7 +1104,29 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
               {/* LIVE COMMUNICATION LOG */}
               <div style={{ marginTop: 15, border: '1px solid var(--gm-blue)', borderRadius: 4, padding: 10 }}>
                 <div style={{ fontSize: '0.9rem', color: 'var(--gm-yellow)', marginBottom: 6 }}>COMMS TRANSMISSION LOG</div>
-                <div style={{ maxHeight: 120, overflowY: 'auto', fontSize: '0.7rem' }}>
+                <div style={{ 
+                  maxHeight: '500px', 
+                  minHeight: '200px',
+                  overflowY: 'auto', 
+                  fontSize: '0.7rem',
+                  scrollbarWidth: 'thin',
+                  scrollbarColor: 'var(--gm-blue) rgba(0,0,0,0.3)',
+                  '&::-webkit-scrollbar': {
+                    width: '8px',
+                  },
+                  '&::-webkit-scrollbar-track': {
+                    background: 'rgba(0,0,0,0.3)',
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-thumb': {
+                    backgroundColor: 'var(--gm-blue)',
+                    borderRadius: '4px',
+                  },
+                  '&::-webkit-scrollbar-thumb:hover': {
+                    backgroundColor: 'var(--gm-green)',
+                  },
+                  paddingRight: '4px'
+                }}>
                   {commsTransmissions.length === 0 ? (
                     <div style={{ color: '#666' }}>No transmissions yet</div>
                   ) : (
@@ -2488,15 +2510,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 <span>Lock:</span>
                 <span>{states.weapons?.targeting?.lockStatus ?? '—'}</span>
               </Row>
-              <div style={{ marginTop: 10 }}>
-                <EmitButton onClick={() => emit('fire_primary_weapons', {})}>Fire Primaries</EmitButton>
-                <EmitButton onClick={() => emit('fire_torpedo', { type: 'proton' })}>
-                  Fire Proton
-                </EmitButton>
-                <EmitRed onClick={() => emit('clear_all_assigned_weapons', {})}>
-                  Strip All Weapons
-                </EmitRed>
-              </div>
+
 
               {/* Weapon Management Controls */}
               <div style={{ 

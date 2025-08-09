@@ -839,7 +839,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       </div>
 
       {/* Message Log */}
-      <div style={{ ...panelStyle, height: '520px' }}>
+      <div style={{ ...panelStyle, height: '620px' }}>
         <h3 style={panelTitleStyle}>TRANSMISSION LOG</h3>
 
         <div style={{
@@ -849,7 +849,8 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
           borderRadius: '4px',
           padding: '10px',
           overflowY: 'auto',
-          fontSize: '11px'
+          fontSize: '11px',
+          maxHeight: '550px'
         }}>
           {communications.messageQueue.length === 0 ? (
             <div style={{ color: '#666666', textAlign: 'center', marginTop: '50px' }}>
@@ -896,7 +897,7 @@ const CommunicationsStation: React.FC<CommunicationsStationProps> = ({ gameState
       </div>
 
       {/* Communication Channels */}
-      <div style={{ ...panelStyle, height: '340px' }}>
+      <div style={{ ...panelStyle, height: '240px' }}>
         <h3 style={panelTitleStyle}>COMMUNICATION CHANNELS</h3>
 
         {/* Frequency Slider */}
