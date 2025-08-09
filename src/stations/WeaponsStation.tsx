@@ -18,6 +18,7 @@ interface EnemyShip {
   alive: boolean;
   wreck: boolean;
   salvageProgress: number;
+  salvaged?: boolean;
   faction?: 'enemy' | 'ally' | 'neutral';
   waypoint?: {
     x: number;
@@ -135,6 +136,60 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
   const [selectedShip, setSelectedShip] = useState<Ship | null>(null);
   const [selectedShipStats, setSelectedShipStats] = useState<any>(null);
 
+  // Projectile system state
+  interface Projectile {
+    id: string;
+    startX: number;
+    startY: number;
+    targetX: number;
+    targetY: number;
+    currentX: number;
+    currentY: number;
+    progress: number;
+    speed: number;
+    color: string;
+    weapon: string;
+    targetId: string;
+  }
+  const [projectiles, setProjectiles] = useState<Projectile[]>([]);
+
+  // Function to create a projectile
+  const createProjectile = (target: EnemyShip, weaponName: string) => {
+    const cx = R_WIDTH / 2;
+    const cy = R_HEIGHT / 2;
+
+    // Calculate target position on radar
+    const ang = toRad(target.x);
+    const dist = (target.y / 100) * RADAR_RADIUS;
+    const targetX = cx + Math.cos(ang) * dist;
+    const targetY = cy + Math.sin(ang) * dist;
+
+    // Determine projectile color based on weapon type
+    let color = '#00ff00'; // Default green
+    if (weaponName.toLowerCase().includes('turbolaser')) color = '#ff0000'; // Red
+    else if (weaponName.toLowerCase().includes('laser')) color = '#00ff00'; // Green
+    else if (weaponName.toLowerCase().includes('ion')) color = '#0088ff'; // Blue
+    else if (weaponName.toLowerCase().includes('missile') || weaponName.toLowerCase().includes('torpedo')) color = '#ffaa00'; // Orange
+    else if (weaponName.toLowerCase().includes('blaster')) color = '#ff4444'; // Light red
+
+    const projectile: Projectile = {
+      id: `projectile-${Date.now()}-${Math.random()}`,
+      startX: cx,
+      startY: cy,
+      targetX,
+      targetY,
+      currentX: cx,
+      currentY: cy,
+      progress: 0,
+      speed: 0.05, // Animation speed (0-1 per frame)
+      color,
+      weapon: weaponName,
+      targetId: target.id
+    };
+
+    setProjectiles(prev => [...prev, projectile]);
+  };
+
   // Star Wars ship types and their base stats (Edge of the Empire)
   const STAR_WARS_SHIPS = [
     { name: 'YT-1300 Light Freighter', silhouette: 4, speed: 3, handling: -1, defense: [1, 1], armor: 3, hullTrauma: 25, systemStrain: 13, crew: '1-2', passengers: 6, encumbrance: 165, cost: 100000 },
@@ -158,6 +213,15 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     { name: 'Corellian Engineering YZ-775', silhouette: 4, speed: 2, handling: -2, defense: [1, 1], armor: 4, hullTrauma: 26, systemStrain: 17, crew: '2-5', passengers: 15, encumbrance: 250, cost: 140000 }
   ];
 
+  // Helper function to generate consistent ECM frequency from any ID
+  const generateConsistentECM = (id: string): number => {
+    const hash = id.split('').reduce((a, b) => {
+      a = ((a << 5) - a) + b.charCodeAt(0);
+      return a & a;
+    }, 0);
+    return Math.abs(hash % 1000);
+  };
+
   // Generate random ship stats based on Edge of the Empire rules
   const generateShipStats = (ship: Ship) => {
     const shipHash = ship.id.split('').reduce((a, b) => {
@@ -179,6 +243,8 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       systemStrain: Math.round(baseShip.systemStrain * variation()),
       currentHull: Math.round(baseShip.hullTrauma * variation()),
       currentStrain: Math.round(baseShip.systemStrain * variation()),
+      // Generate ECM frequency for missile lock targeting
+      ecmFreq: Math.abs(shipHash % 1000),
       // Random condition
       condition: Math.random() > 0.7 ? 'Damaged' : Math.random() > 0.3 ? 'Operational' : 'Pristine',
       // Random crew status
@@ -482,7 +548,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: typeof e.size === 'number' ? e.size : (1 + Math.random() * 2),
               hp: 120,
               shields: 80,
-              ecmFreq: Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(e.id || `enemy-${Date.now()}`),
               alive: true,
               wreck: false,
               salvageProgress: 0
@@ -493,7 +559,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         case 'wave_spawn': {
           const n = data.value?.count ?? 3;
           const base = Math.random() * 360;
-          const ecmFreqs = data.value?.ecmFreqs || Array.from({ length: n }, () => Math.floor(Math.random() * 1000));
           setEnemies(prev => [
             ...prev,
             ...Array.from({ length: n }).map((_, i) => ({
@@ -505,7 +570,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: 1 + Math.random() * 2,
               hp: 100,
               shields: 60,
-              ecmFreq: ecmFreqs[i] || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(`enemy-${Date.now()}-${i}`),
               alive: true,
               wreck: false,
               salvageProgress: 0
@@ -525,7 +590,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: 3.5,
               hp: 450,
               shields: 250,
-              ecmFreq: data.value?.ecmFreq || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(data.value?.id || `boss-${Date.now()}`),
               alive: true,
               wreck: false,
               salvageProgress: 0
@@ -568,7 +633,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: typeof e.size === 'number' ? e.size : (1 + Math.random() * 2),
               hp: e.hp || 120,
               shields: e.shields || 80,
-              ecmFreq: e.ecmFreq || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(e.id || `ally-${Date.now()}`),
               alive: true,
               wreck: false,
               salvageProgress: 0,
@@ -580,7 +645,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         case 'ally_squad_spawn': {
           const n = data.value?.count ?? 4;
           const base = Math.random() * 360;
-          const ecmFreqs = data.value?.ecmFreqs || Array.from({ length: n }, () => Math.floor(Math.random() * 1000));
           console.log('🤝 Weapons Station: Spawning ally squadron of', n, 'ships');
           setEnemies(prev => [
             ...prev,
@@ -593,7 +657,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: 1 + Math.random() * 2,
               hp: 120,
               shields: 80,
-              ecmFreq: ecmFreqs[i] || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(`ally-squad-${Date.now()}-${i}`),
               alive: true,
               wreck: false,
               salvageProgress: 0,
@@ -616,7 +680,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: typeof e.size === 'number' ? e.size : (1 + Math.random() * 2),
               hp: e.hp || 80,
               shields: e.shields || 40,
-              ecmFreq: e.ecmFreq || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(e.id || `neutral-${Date.now()}`),
               alive: true,
               wreck: false,
               salvageProgress: 0,
@@ -628,7 +692,6 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         case 'neutral_convoy_spawn': {
           const n = data.value?.count ?? 3;
           const base = Math.random() * 360;
-          const ecmFreqs = data.value?.ecmFreqs || Array.from({ length: n }, () => Math.floor(Math.random() * 1000));
           console.log('⚪ Weapons Station: Spawning neutral convoy of', n, 'ships');
           setEnemies(prev => [
             ...prev,
@@ -641,7 +704,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
               size: 1.5 + Math.random() * 1.5,
               hp: 100,
               shields: 50,
-              ecmFreq: ecmFreqs[i] || Math.floor(Math.random() * 1000),
+              ecmFreq: generateConsistentECM(`neutral-convoy-${Date.now()}-${i}`),
               alive: true,
               wreck: false,
               salvageProgress: 0,
@@ -918,6 +981,20 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         return { ...e, x: nx, y: ny, heading: newHeading, waypoint: e.waypoint };
       }));
 
+      // Update projectiles
+      setProjectiles(prev => prev.map(projectile => {
+        const newProgress = Math.min(1, projectile.progress + projectile.speed);
+        const newX = projectile.startX + (projectile.targetX - projectile.startX) * newProgress;
+        const newY = projectile.startY + (projectile.targetY - projectile.startY) * newProgress;
+
+        return {
+          ...projectile,
+          progress: newProgress,
+          currentX: newX,
+          currentY: newY
+        };
+      }).filter(projectile => projectile.progress < 1)); // Remove completed projectiles
+
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d')!;
@@ -1038,9 +1115,18 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       }
 
       if (isSelected && enemy.alive) {
-        ctx.strokeStyle = '#ffd700';
-        ctx.lineWidth = 1.5;
+        // Change reticle color based on lock status
+        ctx.strokeStyle = locked ? '#ff0000' : '#ffd700'; // Red when locked, gold when not locked
+        ctx.lineWidth = locked ? 2.5 : 1.5; // Thicker line when locked
         ctx.beginPath(); ctx.arc(ex, ey, reticleTightness, 0, Math.PI * 2); ctx.stroke();
+
+        // Add pulsing effect when locked
+        if (locked) {
+          const pulseAlpha = 0.3 + 0.3 * Math.sin(performance.now() * 0.008);
+          ctx.strokeStyle = `rgba(255, 0, 0, ${pulseAlpha})`;
+          ctx.lineWidth = 4;
+          ctx.beginPath(); ctx.arc(ex, ey, reticleTightness + 3, 0, Math.PI * 2); ctx.stroke();
+        }
 
         if (showLead) {
           const v = headingToVec(enemy.heading, enemy.speed);
@@ -1102,8 +1188,39 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     ctx.font = '12px Orbitron, monospace';
     ctx.fillText(`AMMO: ${ammo}`, 20, R_HEIGHT - 40);
     ctx.fillText(`AIM: ${aim}`, 20, R_HEIGHT - 22);
-    ctx.fillText(`MISSILES: ${missiles}`, 160, R_HEIGHT - 22);
+    ctx.font = '18px Orbitron, monospace';
+    ctx.fillText(`MISSILES: ${missiles}`, 390, R_HEIGHT - 22);
+    ctx.font = '12px Orbitron, monospace';
     if (heatSinks > 0) ctx.fillText(`HEAT SINKS: ${heatSinks}`, 160, R_HEIGHT - 40);
+
+    // Draw projectiles
+    projectiles.forEach(projectile => {
+      ctx.fillStyle = projectile.color;
+      ctx.shadowColor = projectile.color;
+      ctx.shadowBlur = 8;
+
+      // Draw projectile as a small circle with trail effect
+      ctx.beginPath();
+      ctx.arc(projectile.currentX, projectile.currentY, 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw a small trail
+      const trailLength = 15;
+      const trailX = projectile.currentX - (projectile.targetX - projectile.startX) * 0.1;
+      const trailY = projectile.currentY - (projectile.targetY - projectile.startY) * 0.1;
+
+      ctx.strokeStyle = projectile.color;
+      ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(trailX, trailY);
+      ctx.lineTo(projectile.currentX, projectile.currentY);
+      ctx.stroke();
+
+      // Reset shadow and alpha
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    });
   };
 
   const drawBar = (
@@ -1159,7 +1276,7 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     };
     window.addEventListener('mousemove', onMove);
     return () => window.removeEventListener('mousemove', onMove);
-  }, [ships, pinnedShips]);
+  }, [ships, pinnedShips, shipPositions]);
 
   useEffect(() => {
     const i = setInterval(() => {
@@ -1195,6 +1312,10 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         return;
       }
       const diff = Math.abs(playerFreq - sel.ecmFreq);
+
+      // Debug logging
+      console.log(`🎯 Lock Debug - Player: ${playerFreq}, Target ECM: ${sel.ecmFreq}, Diff: ${diff}, Target ID: ${sel.id}`);
+
       const delta =
         diff < 10 ? 1.0 :
           diff < 30 ? 0.55 :
@@ -1273,6 +1394,9 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         const leftover = damage - shieldActuallyDealt;
         hullDamage = Math.max(0, leftover * weaponHullMult);
       }
+
+      // Create projectile visual effect
+      createProjectile(target, selectedWeapon);
 
       // Apply damage and emit weapon fired event
       applyDamageToTarget(target, hit, shieldDamage, hullDamage);
@@ -1404,8 +1528,38 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
     });
 
     if (clickedShip) {
-      setSelectedShip(clickedShip);
-      setSelectedShipStats(generateShipStats(clickedShip));
+      const selectedShip = clickedShip as Ship; // Explicit type assertion
+      setSelectedShip(selectedShip);
+      const shipStats = generateShipStats(selectedShip);
+      setSelectedShipStats(shipStats);
+
+      // Set this ship as the missile lock target
+      setSelectedEnemyId(`civilian-${selectedShip.id}`);
+
+      // Create a virtual enemy ship for missile lock system using current position
+      const shipPos = shipPositions[selectedShip.id];
+      const virtualEnemy: EnemyShip = {
+        id: `civilian-${selectedShip.id}`,
+        x: shipPos ? shipPos.x : Math.random() * 360, // Use current angle or random if not found
+        y: shipPos ? shipPos.y : 50 + Math.random() * 40, // Use current distance or random if not found
+        heading: shipPos ? shipPos.heading : Math.random() * 360,
+        speed: shipPos ? shipPos.speed : 20,
+        size: 1,
+        hp: shipStats.currentHull,
+        shields: 0, // Civilian ships typically don't have combat shields
+        ecmFreq: shipStats.ecmFreq,
+        alive: true,
+        wreck: false,
+        salvageProgress: 0,
+        faction: 'neutral'
+      };
+
+      // Add to enemies list temporarily for missile lock system
+      setEnemies(prev => {
+        const filtered = prev.filter(e => !e.id.startsWith('civilian-'));
+        return [...filtered, virtualEnemy];
+      });
+
       return; // Don't check for enemy ships if we clicked a yellow dot
     }
 
@@ -1429,12 +1583,23 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       // Clear ship selection when selecting enemy
       setSelectedShip(null);
       setSelectedShipStats(null);
+    } else {
+      // Clicked on empty space - clear all selections but preserve ship data
+      setSelectedEnemyId(null);
+      setSelectedShip(null);
+      setSelectedShipStats(null);
+      // Reset lock system
+      setLockFill(0);
+      setLocked(false);
+      // Note: We don't remove civilian virtual enemies - they should persist
+      // The ship continues to exist and move according to its movement pattern
     }
   };
 
   const handleHoldSalvage = () => {
     if (!selectedEnemy) return;
     if (!selectedEnemy.wreck) return;
+    if (selectedEnemy.salvaged) return; // Prevent re-salvaging
 
     const id = selectedEnemy.id;
     const start = performance.now();
@@ -1451,6 +1616,10 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         const gotSink = !gotMissile;
         if (gotMissile) setMissiles(m => m + 1);
         if (gotSink) setHeatSinks(h => h + 1);
+
+        // Mark wreck as salvaged to prevent re-salvaging
+        setEnemies(prev => prev.map(e => e.id === id ? { ...e, salvaged: true } : e));
+
         socket?.emit('salvage_complete', { room: roomRef.current, targetId: id, reward: gotMissile ? 'missile' : 'heatsink' });
       }
     };
@@ -1774,8 +1943,23 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
                 Crew: <span style={{ color: '#ffeb99' }}>{selectedShipStats.crewStatus}</span>
               </span>
               <span style={{ color: '#ffd700', fontWeight: 'bold' }}>
-                Value: <span style={{ color: '#ffeb99' }}>{(selectedShipStats.cost / 1000).toFixed(0)}k</span>
+                ECM: <span style={{ color: '#ffeb99' }}>{selectedShipStats.ecmFreq}</span>
               </span>
+            </div>
+
+            <div style={{
+              marginTop: '4px',
+              textAlign: 'center',
+              fontSize: '8px',
+              color: '#ffd700',
+              fontWeight: 'bold'
+            }}>
+              Value: <span style={{ color: '#ffeb99' }}>{(selectedShipStats.cost / 1000).toFixed(0)}k Credits</span>
+              {selectedEnemyId === `civilian-${selectedShip?.id}` && (
+                <span style={{ color: '#00ff88', marginLeft: '10px' }}>
+                  🎯 TARGETED FOR LOCK
+                </span>
+              )}
             </div>
           </div>
         )}
@@ -2059,7 +2243,66 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
         </div>
 
         <div style={{ margin: '12px 0' }}>
-          <div style={{ fontSize: 12, color: '#9ad0ff', marginBottom: 6 }}>Signal Match (Missile Lock)</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+            <div style={{ fontSize: 12, color: '#9ad0ff' }}>Signal Match (Missile Lock)</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <button
+                onClick={() => setPlayerFreq(prev => Math.max(0, prev - 1))}
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  background: 'rgba(0, 255, 255, 0.2)',
+                  border: '1px solid #00ffff',
+                  borderRadius: '3px',
+                  color: '#00ffff',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 255, 255, 0.4)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 255, 255, 0.2)'}
+              >
+                ▼
+              </button>
+              <div style={{
+                fontSize: 14,
+                color: '#00ffff',
+                fontWeight: 'bold',
+                background: 'rgba(0, 255, 255, 0.1)',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                border: '1px solid #00ffff',
+                minWidth: '40px',
+                textAlign: 'center'
+              }}>
+                {playerFreq}
+              </div>
+              <button
+                onClick={() => setPlayerFreq(prev => Math.min(1000, prev + 1))}
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  background: 'rgba(0, 255, 255, 0.2)',
+                  border: '1px solid #00ffff',
+                  borderRadius: '3px',
+                  color: '#00ffff',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0, 255, 255, 0.4)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0, 255, 255, 0.2)'}
+              >
+                ▲
+              </button>
+            </div>
+          </div>
           <input
             type="range"
             min={0}
@@ -2071,8 +2314,58 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#7aa' }}>
             <span>0</span><span>Lock: {Math.round(lockFill * 100)}%</span><span>1000</span>
           </div>
-          <div style={{ marginTop: 6, fontSize: 12 }}>
-            {locked ? <span style={{ color: '#00ff88', fontWeight: 700 }}>LOCKED — Seeker ready</span> : <span style={{ color: '#aaa' }}>Tune to target ECM</span>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+            <div style={{ fontSize: 12 }}>
+              {locked ? <span style={{ color: '#00ff88', fontWeight: 700 }}>LOCKED — Seeker ready</span> : <span style={{ color: '#aaa' }}>Tune to target ECM</span>}
+            </div>
+            <button
+              onClick={() => {
+                const sel = selectedEnemy;
+                if (sel && sel.alive && Math.abs(playerFreq - sel.ecmFreq) === 0) {
+                  setLocked(true);
+                  setLockFill(1);
+                  console.log('🔒 Manual lock engaged - frequencies match exactly!');
+                } else if (sel && sel.alive) {
+                  console.log(`❌ Cannot lock - frequency mismatch. Player: ${playerFreq}, Target: ${sel.ecmFreq}, Diff: ${Math.abs(playerFreq - sel.ecmFreq)}`);
+                } else {
+                  console.log('❌ Cannot lock - no valid target selected');
+                }
+              }}
+              disabled={!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0}
+              style={{
+                padding: '4px 8px',
+                borderRadius: '4px',
+                border: '1px solid #00ffff',
+                background: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                  ? 'rgba(100, 100, 100, 0.3)'
+                  : locked
+                    ? 'rgba(255, 0, 0, 0.3)'
+                    : 'rgba(0, 255, 255, 0.3)',
+                color: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                  ? '#777'
+                  : locked
+                    ? '#ff0000'
+                    : '#00ffff',
+                fontSize: '10px',
+                fontWeight: 'bold',
+                cursor: (!selectedEnemy || !selectedEnemy.alive || Math.abs(playerFreq - (selectedEnemy?.ecmFreq || 0)) !== 0)
+                  ? 'not-allowed'
+                  : 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={e => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.background = locked ? 'rgba(255, 0, 0, 0.5)' : 'rgba(0, 255, 255, 0.5)';
+                }
+              }}
+              onMouseLeave={e => {
+                if (!e.currentTarget.disabled) {
+                  e.currentTarget.style.background = locked ? 'rgba(255, 0, 0, 0.3)' : 'rgba(0, 255, 255, 0.3)';
+                }
+              }}
+            >
+              {locked ? '🔒 LOCKED' : '🎯 LOCK'}
+            </button>
           </div>
         </div>
 
@@ -2129,12 +2422,25 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           </button>
           <button
             onClick={handleHoldSalvage}
-            disabled={!selectedEnemy || !selectedEnemy.wreck}
+            disabled={!selectedEnemy || !selectedEnemy.wreck || selectedEnemy.salvaged}
             style={{
-              padding: '10px', borderRadius: 8, border: '1px solid #ffa500',
-              background: selectedEnemy && selectedEnemy.wreck ? 'rgba(255,165,0,0.2)' : 'rgba(100,100,100,0.3)',
-              color: selectedEnemy && selectedEnemy.wreck ? '#ffa500' : '#777', fontWeight: 900,
-              cursor: selectedEnemy && selectedEnemy.wreck ? 'pointer' : 'not-allowed'
+              padding: '10px',
+              borderRadius: 8,
+              border: selectedEnemy?.salvaged ? '1px solid #666' : '1px solid #ffa500',
+              background: selectedEnemy?.salvaged
+                ? 'rgba(100,100,100,0.1)' // Faded background for salvaged wrecks
+                : selectedEnemy && selectedEnemy.wreck
+                  ? 'rgba(255,165,0,0.2)' // Normal orange for available wrecks
+                  : 'rgba(100,100,100,0.3)', // Gray for no target
+              color: selectedEnemy?.salvaged
+                ? '#555' // Faded text for salvaged wrecks
+                : selectedEnemy && selectedEnemy.wreck
+                  ? '#ffa500' // Normal orange for available wrecks
+                  : '#777', // Gray for no target
+              fontWeight: 900,
+              cursor: selectedEnemy && selectedEnemy.wreck && !selectedEnemy.salvaged ? 'pointer' : 'not-allowed',
+              opacity: selectedEnemy?.salvaged ? 0.4 : 1, // Additional fade effect
+              transition: 'all 0.3s ease' // Smooth transition when state changes
             }}
           >
             SALVAGE (Hold)
