@@ -1501,14 +1501,17 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
           // Determine movement pattern based on ship hash
           const movementType = Math.abs(shipHash % 5); // 5 different movement patterns
 
-          // Create more varied distance distribution - many ships further out
+          // Create more varied distance distribution with some very close ships
           let distance;
           const distanceRoll = Math.abs(shipHash % 100);
-          if (distanceRoll < 20) {
-            // 20% close range (30-50%)
+          if (distanceRoll < 10) {
+            // 10% very close range (15-30%) - near center
+            distance = 15 + Math.abs(shipHash % 15);
+          } else if (distanceRoll < 25) {
+            // 15% close range (30-50%)
             distance = 30 + Math.abs(shipHash % 20);
           } else if (distanceRoll < 40) {
-            // 20% medium range (50-70%)
+            // 15% medium range (50-70%)
             distance = 50 + Math.abs(shipHash % 20);
           } else {
             // 60% long range (70-95%)
