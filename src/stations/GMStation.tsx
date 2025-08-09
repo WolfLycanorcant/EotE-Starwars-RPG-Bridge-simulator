@@ -2498,6 +2498,136 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </EmitRed>
               </div>
 
+              {/* Weapon Management Controls */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                border: '1px solid var(--gm-blue)', 
+                borderRadius: '4px',
+                backgroundColor: 'rgba(0, 136, 255, 0.1)'
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-blue)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  WEAPON MANAGEMENT:
+                </div>
+                
+                {/* Primary Weapons Management */}
+                <div style={{ marginBottom: '10px' }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gm-yellow)', marginBottom: '4px' }}>
+                    Primary Weapons:
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                    <select
+                      id="primary-weapon-select"
+                      style={{
+                        flex: 1,
+                        background: '#111',
+                        border: '1px solid var(--gm-blue)',
+                        color: '#eee',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      <option value="">Select Primary Weapon</option>
+                      <option value="Auto-Blaster">Auto-Blaster</option>
+                      <option value="Blaster Cannon (Light)">Blaster Cannon (Light)</option>
+                      <option value="Blaster Cannon (Heavy)">Blaster Cannon (Heavy)</option>
+                      <option value="AX-108 Surface-Defense Blaster Cannon">AX-108 Surface-Defense</option>
+                      <option value="Ion Cannon (Light)">Ion Cannon (Light)</option>
+                      <option value="Ion Cannon (Medium)">Ion Cannon (Medium)</option>
+                      <option value="Ion Cannon (Heavy)">Ion Cannon (Heavy)</option>
+                      <option value="Laser Cannon (Light)">Laser Cannon (Light)</option>
+                      <option value="Laser Cannon (Medium)">Laser Cannon (Medium)</option>
+                      <option value="Laser Cannon (Heavy)">Laser Cannon (Heavy)</option>
+                      <option value="Quad Laser Cannon">Quad Laser Cannon</option>
+                      <option value="Turbolaser (Light)">Turbolaser (Light)</option>
+                      <option value="Turbolaser (Medium)">Turbolaser (Medium)</option>
+                      <option value="Turbolaser (Heavy)">Turbolaser (Heavy)</option>
+                    </select>
+                    <EmitButton onClick={() => {
+                      const select = document.getElementById('primary-weapon-select') as HTMLSelectElement;
+                      if (select?.value) {
+                        console.log('🔫 GM Station: Adding primary weapon:', select.value);
+                        sendBroadcast('add_primary_weapon', {
+                          weapon: select.value
+                        });
+                        select.value = '';
+                      }
+                    }}>
+                      Add
+                    </EmitButton>
+                  </div>
+                  <EmitRed onClick={() => {
+                    sendBroadcast('clear_primary_weapons', {});
+                  }}>
+                    Clear Primary
+                  </EmitRed>
+                </div>
+
+                {/* Secondary Weapons Management */}
+                <div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--gm-yellow)', marginBottom: '4px' }}>
+                    Secondary Weapons:
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                    <select
+                      id="secondary-weapon-select"
+                      style={{
+                        flex: 1,
+                        background: '#111',
+                        border: '1px solid var(--gm-blue)',
+                        color: '#eee',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        fontSize: '0.7rem'
+                      }}
+                    >
+                      <option value="">Select Secondary Weapon</option>
+                      <option value="Missile Launcher">Missile Launcher</option>
+                      <option value="Missile Pack">Missile Pack</option>
+                      <option value="Mini-Missile Pack">Mini-Missile Pack</option>
+                      <option value="Mini-Missile Tube">Mini-Missile Tube</option>
+                      <option value="Concussion Missile">Concussion Missile</option>
+                      <option value="Concussion Missile (mini)">Concussion Missile (mini)</option>
+                      <option value="Torpedo Launcher">Torpedo Launcher</option>
+                      <option value="Proton Torpedo">Proton Torpedo</option>
+                      <option value="Tractor Beam (Light)">Tractor Beam (Light)</option>
+                      <option value="Tractor Beam (Medium)">Tractor Beam (Medium)</option>
+                      <option value="Tractor Beam (Heavy)">Tractor Beam (Heavy)</option>
+                      <option value="Tactical Tractor Beam">Tactical Tractor Beam</option>
+                      <option value="Minelayer">Minelayer</option>
+                      <option value="Concussion Mine">Concussion Mine</option>
+                      <option value="Connor Net">Connor Net</option>
+                      <option value="Gravity Mine">Gravity Mine</option>
+                      <option value="Ion Mine">Ion Mine</option>
+                      <option value="Seeker Mine">Seeker Mine</option>
+                    </select>
+                    <EmitButton onClick={() => {
+                      const select = document.getElementById('secondary-weapon-select') as HTMLSelectElement;
+                      if (select?.value) {
+                        console.log('🔫 GM Station: Adding secondary weapon:', select.value);
+                        sendBroadcast('add_secondary_weapon', {
+                          weapon: select.value
+                        });
+                        select.value = '';
+                      }
+                    }}>
+                      Add
+                    </EmitButton>
+                  </div>
+                  <EmitRed onClick={() => {
+                    sendBroadcast('clear_secondary_weapons', {});
+                  }}>
+                    Clear Secondary
+                  </EmitRed>
+                </div>
+              </div>
+
               {/* Enemy Spawning Controls */}
               <div style={{ 
                 marginTop: 15, 

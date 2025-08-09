@@ -124,6 +124,119 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
   const [doublePinnedShipId, setDoublePinnedShipId] = useState<string | null>(shipStore.getDoublePinnedShipId());
   const [currentRegion, setCurrentRegion] = useState<string>(shipStore.getCurrentRegion());
 
+  // Dynamic weapon management state
+  const [primaryWeapons, setPrimaryWeapons] = useState<string[]>(['Turbolaser Battery', 'Ion Cannons', 'Proton Torpedo Launcher']);
+  const [secondaryWeapons, setSecondaryWeapons] = useState<string[]>(['Point Defense', 'Concussion Missiles', 'Tractor Beam']);
+  const [selectedWeapon, setSelectedWeapon] = useState<string | null>(null);
+  const [weaponDetails, setWeaponDetails] = useState<any>(null);
+
+  // Function to fetch and parse weapon details from CSV
+  const fetchWeaponDetails = async (weaponName: string) => {
+    try {
+      console.log('🔍 Fetching weapon details for:', weaponName);
+      const response = await fetch('./assets/weapons and attch (Ship) - Weapons.csv');
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const csvText = await response.text();
+      console.log('📄 CSV fetched successfully, length:', csvText.length);
+      const lines = csvText.split('\n');
+      console.log('📋 Total lines in CSV:', lines.length);
+      
+      // Find the weapon in the CSV
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || line.split(',').length < 2) continue;
+        
+        // Handle CSV parsing with proper comma handling for quoted fields
+        const columns = [];
+        let current = '';
+        let inQuotes = false;
+        
+        for (let j = 0; j < line.length; j++) {
+          const char = line[j];
+          if (char === '"') {
+            inQuotes = !inQuotes;
+          } else if (char === ',' && !inQuotes) {
+            columns.push(current.trim());
+            current = '';
+          } else {
+            current += char;
+          }
+        }
+        columns.push(current.trim()); // Add the last column
+        
+        const weaponNameInCsv = columns[1]?.replace(/"/g, '').trim();
+        
+        // Debug: Log weapon names being compared
+        if (weaponNameInCsv) {
+          console.log(`🔍 Comparing "${weaponName}" with "${weaponNameInCsv}"`);
+        }
+        
+        if (weaponNameInCsv === weaponName) {
+          console.log('✅ Found exact match in CSV:', weaponNameInCsv);
+          const details = {
+            name: weaponNameInCsv,
+            damage: columns[2]?.replace(/"/g, '').trim() || '—',
+            crit: columns[3]?.replace(/"/g, '').trim() || '—',
+            range: columns[4]?.replace(/"/g, '').trim() || '—',
+            silReq: columns[5]?.replace(/"/g, '').trim() || '—',
+            price: columns[6]?.replace(/"/g, '').trim() || '—',
+            rarity: columns[7]?.replace(/"/g, '').trim() || '—',
+            special: columns[8]?.replace(/"/g, '').trim() || 'None'
+          };
+          console.log('📊 Parsed weapon details:', details);
+          setWeaponDetails(details);
+          return;
+        }
+      }
+      
+      console.log('⚠️ Weapon not found in CSV, available weapons:');
+      // Log all available weapons for debugging
+      for (let i = 1; i < Math.min(lines.length, 20); i++) {
+        const line = lines[i].trim();
+        if (line && line.split(',').length >= 2) {
+          const weaponNameInCsv = line.split(',')[1]?.replace(/"/g, '').trim();
+          if (weaponNameInCsv) {
+            console.log(`  - "${weaponNameInCsv}"`);
+          }
+        }
+      }
+      
+      // If weapon not found in CSV, create a generic entry
+      setWeaponDetails({
+        name: weaponName,
+        damage: '—',
+        crit: '—',
+        range: '—',
+        silReq: '—',
+        price: '—',
+        rarity: '—',
+        special: 'Weapon not found in database'
+      });
+    } catch (error) {
+      console.error('❌ Error fetching weapon details:', error);
+      setWeaponDetails({
+        name: weaponName,
+        damage: '—',
+        crit: '—',
+        range: '—',
+        silReq: '—',
+        price: '—',
+        rarity: '—',
+        special: 'Data Unavailable - Check console for errors'
+      });
+    }
+  };
+
+  // Handle weapon click
+  const handleWeaponClick = (weaponName: string) => {
+    setSelectedWeapon(weaponName);
+    fetchWeaponDetails(weaponName);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.repeat) return;
@@ -370,6 +483,26 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
             setLockFill(0);
             setLocked(false);
           }
+          break;
+        }
+        case 'add_primary_weapon': {
+          console.log('🔫 Weapons Station: Adding primary weapon:', data.value.weapon);
+          setPrimaryWeapons(prev => [...prev, data.value.weapon]);
+          break;
+        }
+        case 'add_secondary_weapon': {
+          console.log('🔫 Weapons Station: Adding secondary weapon:', data.value.weapon);
+          setSecondaryWeapons(prev => [...prev, data.value.weapon]);
+          break;
+        }
+        case 'clear_primary_weapons': {
+          console.log('🧹 Weapons Station: Clearing primary weapons');
+          setPrimaryWeapons([]);
+          break;
+        }
+        case 'clear_secondary_weapons': {
+          console.log('🧹 Weapons Station: Clearing secondary weapons');
+          setSecondaryWeapons([]);
           break;
         }
       }
@@ -881,14 +1014,202 @@ const WeaponsStation: React.FC<WeaponsStationProps> = ({ socket: socketProp }) =
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         border: '2px solid #00ffff', borderRadius: '12px', background: 'rgba(0,20,40,0.5)',
-        boxShadow: '0 0 30px rgba(0, 255, 255, 0.2)'
+        boxShadow: '0 0 30px rgba(0, 255, 255, 0.2)',
+        position: 'relative'
       }}>
+        {/* Primary Weapon Systems Container */}
+        <div style={{
+          position: 'absolute',
+          left: '20px',
+          top: '20px',
+          width: '140px',
+          height: '270px',
+          border: '2px solid #ff6b00',
+          borderRadius: '8px',
+          background: 'rgba(255, 107, 0, 0.1)',
+          padding: '10px',
+          boxShadow: '0 0 15px rgba(255, 107, 0, 0.3)'
+        }}>
+          <div style={{
+            color: '#ff6b00',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            marginBottom: '8px',
+            textShadow: '0 0 5px #ff6b00'
+          }}>
+            PRIMARY WEAPONS
+          </div>
+          
+          {/* Dynamic Primary Weapons */}
+          {primaryWeapons.length === 0 ? (
+            <div style={{
+              color: '#666',
+              fontSize: '10px',
+              textAlign: 'center',
+              marginTop: '20px'
+            }}>
+              No Primary Weapons Assigned
+            </div>
+          ) : (
+            primaryWeapons.map((weapon, index) => (
+              <div 
+                key={index} 
+                onClick={() => handleWeaponClick(weapon)}
+                style={{
+                  background: selectedWeapon === weapon ? 'rgba(255, 107, 0, 0.4)' : 'rgba(255, 107, 0, 0.2)',
+                  border: selectedWeapon === weapon ? '2px solid #ff6b00' : '1px solid #ff6b00',
+                  borderRadius: '4px',
+                  padding: '8px',
+                  marginBottom: '6px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ 
+                  color: '#ff6b00', 
+                  fontSize: '11px', 
+                  fontWeight: 'bold',
+                  lineHeight: '1.2'
+                }}>
+                  {weapon}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Secondary Weapon Systems Container */}
+        <div style={{
+          position: 'absolute',
+          left: '184px',
+          top: '20px',
+          width: '140px',
+          height: '270px',
+          border: '2px solid #00ff88',
+          borderRadius: '8px',
+          background: 'rgba(0, 255, 136, 0.1)',
+          padding: '10px',
+          boxShadow: '0 0 15px rgba(0, 255, 136, 0.3)'
+        }}>
+          <div style={{
+            color: '#00ff88',
+            fontSize: '12px',
+            fontWeight: 'bold',
+            textAlign: 'center',
+            marginBottom: '8px',
+            textShadow: '0 0 5px #00ff88'
+          }}>
+            SECONDARY WEAPONS
+          </div>
+          
+          {/* Dynamic Secondary Weapons */}
+          {secondaryWeapons.length === 0 ? (
+            <div style={{
+              color: '#666',
+              fontSize: '10px',
+              textAlign: 'center',
+              marginTop: '20px'
+            }}>
+              No Secondary Weapons Assigned
+            </div>
+          ) : (
+            secondaryWeapons.map((weapon, index) => (
+              <div 
+                key={index} 
+                onClick={() => handleWeaponClick(weapon)}
+                style={{
+                  background: selectedWeapon === weapon ? 'rgba(0, 255, 136, 0.4)' : 'rgba(0, 255, 136, 0.2)',
+                  border: selectedWeapon === weapon ? '2px solid #00ff88' : '1px solid #00ff88',
+                  borderRadius: '4px',
+                  padding: '8px',
+                  marginBottom: '6px',
+                  textAlign: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                <div style={{ 
+                  color: '#00ff88', 
+                  fontSize: '11px', 
+                  fontWeight: 'bold',
+                  lineHeight: '1.2'
+                }}>
+                  {weapon}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Weapon Details Panel */}
+        {weaponDetails && (
+          <div style={{
+            position: 'absolute',
+            left: '20px',
+            bottom: '20px',
+            width: '304px', // Spans both weapon containers
+            height: '120px',
+            border: '2px solid #ffd700',
+            borderRadius: '8px',
+            background: 'rgba(255, 215, 0, 0.1)',
+            padding: '10px',
+            boxShadow: '0 0 15px rgba(255, 215, 0, 0.3)'
+          }}>
+            <div style={{
+              color: '#ffd700',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              marginBottom: '8px',
+              textShadow: '0 0 5px #ffd700'
+            }}>
+              WEAPON SPECIFICATIONS
+            </div>
+            
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '8px',
+              fontSize: '9px'
+            }}>
+              <div>
+                <div style={{ color: '#ffd700', fontWeight: 'bold', marginBottom: '2px' }}>
+                  {weaponDetails.name}
+                </div>
+                <div style={{ color: '#ffeb99' }}>
+                  <div>Damage: {weaponDetails.damage}</div>
+                  <div>Crit: {weaponDetails.crit}</div>
+                  <div>Range: {weaponDetails.range}</div>
+                </div>
+              </div>
+              <div>
+                <div style={{ color: '#ffeb99' }}>
+                  <div>Sil. Req: {weaponDetails.silReq}</div>
+                  <div>Price: {weaponDetails.price}</div>
+                  <div>Rarity: {weaponDetails.rarity}</div>
+                </div>
+              </div>
+            </div>
+            
+            <div style={{
+              marginTop: '6px',
+              color: '#ffeb99',
+              fontSize: '8px',
+              lineHeight: '1.2'
+            }}>
+              <strong style={{ color: '#ffd700' }}>Special:</strong> {weaponDetails.special}
+            </div>
+          </div>
+        )}
+
         <canvas
           ref={canvasRef}
           width={R_WIDTH}
           height={R_HEIGHT}
           onClick={handleClickCanvas}
-          style={{ borderRadius: '12px', cursor: 'crosshair' }}
+          style={{ borderRadius: '12px', cursor: 'crosshair', position: 'relative', left: '197px' }}
         />
       </div>
 
