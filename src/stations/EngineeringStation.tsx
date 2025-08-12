@@ -125,7 +125,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     const [powerHistory, setPowerHistory] = useState<Array<{ timestamp: number; allocations: typeof engineeringState.powerDistribution.powerAllocations }>>([]);
 
     // Droid management state
-    const [availableDroids, setAvailableDroids] = useState<number>(20);
+    const [availableDroids, setAvailableDroids] = useState<number>(1);
 
     // Ship strain management state
     const [shipStrain, setShipStrain] = useState<{ current: number; maximum: number }>({
@@ -141,11 +141,11 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             emergencyPower: false,
             powerAllocations: {
                 weapons: 100,
-                shields: 150,
-                engines: 120,
-                sensors: 90,
-                lifeSupport: 90,
-                communications: 50,
+                shields: 100,
+                engines: 100,
+                sensors: 100,
+                lifeSupport: 100,
+                communications: 100,
             },
         },
         systemStatus: {
@@ -2862,7 +2862,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                         <input
                                             type="range"
                                             min="0"
-                                            max="100"
+                                            max="150"
                                             value={allocation}
                                             onChange={(e) => updatePowerAllocationSafe(systemName, parseInt(e.target.value))}
                                             style={{
@@ -2870,10 +2870,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 height: '6px',
                                                 background: `linear-gradient(to right, 
                                                 #ff4444 0%, 
-                                                #ff4444 ${(requirements.minimum / 100) * 100}%, 
-                                                #ffaa44 ${(requirements.minimum / 100) * 100}%, 
-                                                #ffaa44 ${(requirements.optimal / 100) * 100}%, 
-                                                #44ff44 ${(requirements.optimal / 100) * 100}%, 
+                                                #ff4444 ${(requirements.minimum / 150) * 100}%, 
+                                                #ffaa44 ${(requirements.minimum / 150) * 100}%, 
+                                                #ffaa44 ${(requirements.optimal / 150) * 100}%, 
+                                                #44ff44 ${(requirements.optimal / 150) * 100}%, 
                                                 #44ff44 100%)`,
                                                 borderRadius: '3px',
                                                 outline: 'none',
@@ -3230,7 +3230,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Engines: ${engineeringState.systemStatus.engines.health.toFixed(0)}% health`}
                                 >
-                                    ENG
+                                    ENGINES
                                 </div>
 
                                 {/* Weapons - Front section */}
@@ -3273,7 +3273,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Weapons: ${engineeringState.systemStatus.weapons.health.toFixed(0)}% health`}
                                 >
-                                    WPN
+                                    WEAPONS
                                 </div>
 
                                 {/* Shields - Mid section, distributed */}
@@ -3316,7 +3316,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Shields: ${engineeringState.systemStatus.shields.health.toFixed(0)}% health`}
                                 >
-                                    SHD
+                                    SHIELDS
                                 </div>
 
                                 {/* Sensors - Top front section */}
@@ -3359,14 +3359,14 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Sensors: ${engineeringState.systemStatus.sensors.health.toFixed(0)}% health`}
                                 >
-                                    SNS
+                                    SENSORS
                                 </div>
 
                                 {/* Life Support - Central core */}
                                 <div style={{
                                     position: 'absolute',
-                                    left: '45%',
-                                    top: '45%',
+                                    left: '75%',
+                                    top: '65%',
                                     width: '10%',
                                     height: '10%',
                                     background: engineeringState.systemStatus.lifeSupport.criticalDamage
@@ -3402,7 +3402,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Life Support: ${engineeringState.systemStatus.lifeSupport.health.toFixed(0)}% health`}
                                 >
-                                    LS
+                                    <span style={{ marginLeft: '5px' }}>LIFE SUPPORT</span>
                                 </div>
 
                                 {/* Communications - Top rear section */}
@@ -3445,7 +3445,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     }}
                                     title={`Communications: ${engineeringState.systemStatus.communications.health.toFixed(0)}% health`}
                                 >
-                                    COM
+                                    COMMUNICATIONS
                                 </div>
 
                                 {/* Legend */}
@@ -3998,205 +3998,154 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     </div>
                 </div>
 
-                {/* System Boost Panel */}
+                {/* Power-Based Dice Boosts Panel */}
                 <div style={getPanelStyle('none')} className="engineering-panel">
-                    <h3 style={panelTitleStyle}>SYSTEM BOOSTS</h3>
+                    <h3 style={panelTitleStyle}>DICE BOOSTS</h3>
                     <div style={{ color: '#ff8c00', fontSize: '12px', height: '100%', display: 'flex', flexDirection: 'column' }}>
 
-                        {/* Active Boosts Section */}
-                        <div style={{ marginBottom: '15px', padding: '8px', background: 'rgba(255, 140, 0, 0.1)', borderRadius: '4px' }}>
-                            <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '6px', textAlign: 'center' }}>
-                                ACTIVE BOOSTS ({engineeringState.activeBoosts.length})
-                            </div>
-
-                            {engineeringState.activeBoosts.length === 0 ? (
-                                <div style={{ textAlign: 'center', color: '#888', fontSize: '9px' }}>
-                                    No active system boosts
-                                </div>
-                            ) : (
-                                <div style={{ maxHeight: '80px', overflowY: 'auto' }}>
-                                    {engineeringState.activeBoosts.map((boost) => {
-                                        const boostColor = boost.boostType === 'performance' ? '#44ff44' :
-                                            boost.boostType === 'efficiency' ? '#44ffff' : '#ffff44';
-                                        const timePercent = (boost.timeRemaining / boost.duration) * 100;
-
-                                        return (
-                                            <div key={boost.id} style={{
-                                                marginBottom: '6px',
-                                                padding: '4px',
-                                                background: `rgba(${boost.boostType === 'performance' ? '68, 255, 68' : boost.boostType === 'efficiency' ? '68, 255, 255' : '255, 255, 68'}, 0.1)`,
-                                                border: `1px solid ${boostColor}`,
-                                                borderRadius: '2px'
-                                            }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px' }}>
-                                                    <span style={{ fontSize: '9px', textTransform: 'uppercase', color: boostColor }}>
-                                                        {boost.systemName}
-                                                    </span>
-                                                    <button
-                                                        onClick={() => removeSystemBoost(boost.id)}
-                                                        style={{
-                                                            width: '12px',
-                                                            height: '12px',
-                                                            background: '#ff4444',
-                                                            border: 'none',
-                                                            borderRadius: '2px',
-                                                            color: '#fff',
-                                                            fontSize: '8px',
-                                                            cursor: 'pointer',
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'center'
-                                                        }}
-                                                    >
-                                                        ×
-                                                    </button>
-                                                </div>
-                                                <div style={{ fontSize: '8px', marginBottom: '2px' }}>
-                                                    {boost.boostType.toUpperCase()} +{boost.magnitude}
-                                                </div>
-                                                <div style={{ fontSize: '8px', marginBottom: '2px' }}>
-                                                    {Math.floor(boost.timeRemaining / 60)}:{(boost.timeRemaining % 60).toString().padStart(2, '0')}
-                                                </div>
-                                                <div style={{
-                                                    width: '100%',
-                                                    height: '2px',
-                                                    background: 'rgba(0, 0, 0, 0.3)',
-                                                    borderRadius: '1px',
-                                                    overflow: 'hidden'
-                                                }}>
-                                                    <div style={{
-                                                        width: `${timePercent}%`,
-                                                        height: '100%',
-                                                        background: boostColor,
-                                                        transition: 'width 1s linear'
-                                                    }} />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            )}
+                        {/* Boost Explanation */}
+                        <div style={{
+                            marginBottom: '15px',
+                            padding: '6px',
+                            background: 'rgba(255, 140, 0, 0.1)',
+                            borderRadius: '4px',
+                            fontSize: '8px',
+                            textAlign: 'center'
+                        }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>POWER-BASED DICE BOOSTS</div>
+                            <div>115%+ = Boost Die | 130%+ = Green Die | 150% = Upgrade Green→Yellow</div>
                         </div>
 
-                        {/* Available Boosts Section */}
+                        {/* System Power Levels and Available Boosts */}
                         <div style={{ flex: 1, overflowY: 'auto' }}>
-                            <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '8px', textAlign: 'center' }}>
-                                AVAILABLE BOOSTS
-                            </div>
+                            {Object.entries(engineeringState.powerDistribution.powerAllocations).map(([systemName, allocation]) => {
+                                // Calculate available dice boosts based on power level
+                                const getAvailableDiceBoosts = (powerLevel: number) => {
+                                    const boosts = [];
+                                    if (powerLevel >= 115) {
+                                        boosts.push({ type: 'boost', name: 'Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
+                                    }
+                                    if (powerLevel >= 130) {
+                                        boosts.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
+                                    }
+                                    if (powerLevel >= 150) {
+                                        boosts.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
+                                    }
+                                    return boosts;
+                                };
 
-                            {Object.keys(engineeringState.systemStatus).map(systemName => {
-                                const system = engineeringState.systemStatus[systemName];
-                                const boostEffects = calculateBoostEffects(systemName);
-                                const availableBoosts = getAvailableBoosts(systemName);
-                                const hasAvailableBoosts = availableBoosts.some(boost => boost.canApply);
+                                const availableBoosts = getAvailableDiceBoosts(allocation);
+                                const powerPercentage = Math.round((allocation / 150) * 100);
 
-                                if (!hasAvailableBoosts && boostEffects.performanceBonus === 0 && boostEffects.efficiencyBonus === 0 && boostEffects.outputBonus === 0) {
-                                    return null; // Skip systems with no available boosts and no active effects
-                                }
+                                // Color coding based on power level
+                                const getPowerColor = (power: number) => {
+                                    if (power >= 150) return '#ffff44'; // Yellow for max power
+                                    if (power >= 130) return '#44ff44'; // Green for high power
+                                    if (power >= 115) return '#88ff88'; // Light green for boost power
+                                    return '#ff8c00'; // Orange for normal power
+                                };
 
                                 return (
                                     <div key={systemName} style={{
-                                        marginBottom: '12px',
+                                        marginBottom: '10px',
                                         padding: '6px',
                                         background: 'rgba(255, 140, 0, 0.05)',
-                                        border: '1px solid #ff8c00',
-                                        borderRadius: '4px'
+                                        borderRadius: '4px',
+                                        border: `1px solid ${getPowerColor(allocation)}`
                                     }}>
                                         {/* System Header */}
                                         <div style={{
                                             display: 'flex',
                                             justifyContent: 'space-between',
                                             alignItems: 'center',
-                                            marginBottom: '4px'
+                                            marginBottom: '6px'
                                         }}>
                                             <span style={{
+                                                fontSize: '9px',
                                                 fontWeight: 'bold',
                                                 textTransform: 'uppercase',
-                                                fontSize: '10px'
+                                                color: getPowerColor(allocation)
                                             }}>
                                                 {systemName}
                                             </span>
                                             <span style={{
-                                                fontSize: '8px',
-                                                color: system.strain > 80 ? '#ff4444' : system.strain > 50 ? '#ffaa44' : '#44ff44'
+                                                fontSize: '9px',
+                                                fontWeight: 'bold',
+                                                color: getPowerColor(allocation)
                                             }}>
-                                                {system.strain.toFixed(0)}% strain
+                                                {allocation} units
                                             </span>
                                         </div>
 
-                                        {/* Current Boost Effects */}
-                                        {(boostEffects.performanceBonus > 0 || boostEffects.efficiencyBonus > 0 || boostEffects.outputBonus > 0) && (
-                                            <div style={{ fontSize: '8px', marginBottom: '4px', color: '#44ff44' }}>
-                                                {boostEffects.performanceBonus > 0 && <div>Performance: +{boostEffects.performanceBonus}%</div>}
-                                                {boostEffects.efficiencyBonus > 0 && <div>Efficiency: +{boostEffects.efficiencyBonus}%</div>}
-                                                {boostEffects.outputBonus > 0 && <div>Output: +{boostEffects.outputBonus}%</div>}
-                                            </div>
-                                        )}
-
-                                        {/* Boost Type Buttons */}
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '2px' }}>
-                                            {['performance', 'efficiency', 'output'].map(boostType => {
-                                                const boost = availableBoosts.find(b => b.boostType === boostType && b.magnitude === 1);
-                                                const canApply = boost?.canApply || false;
-                                                const strainCost = calculateBoostStrainCost(systemName, boostType as 'performance' | 'efficiency' | 'output', 1);
-                                                const boostColor = boostType === 'performance' ? '#44ff44' :
-                                                    boostType === 'efficiency' ? '#44ffff' : '#ffff44';
-
-                                                return (
-                                                    <button
-                                                        key={boostType}
-                                                        onClick={() => canApply && applySystemBoost(systemName, boostType as 'performance' | 'efficiency' | 'output', 1)}
-                                                        disabled={!canApply}
-                                                        style={{
-                                                            padding: '4px 2px',
-                                                            background: canApply ? `linear-gradient(45deg, ${boostColor}, ${boostColor}aa)` : '#444',
-                                                            border: 'none',
-                                                            borderRadius: '2px',
-                                                            color: canApply ? '#000' : '#888',
-                                                            fontSize: '7px',
-                                                            fontWeight: 'bold',
-                                                            cursor: canApply ? 'pointer' : 'not-allowed',
-                                                            textTransform: 'uppercase',
-                                                            textAlign: 'center'
-                                                        }}
-                                                        title={canApply ? `${boostType.toUpperCase()} +1 (${strainCost} strain)` : boost?.reason}
-                                                    >
-                                                        {boostType.substr(0, 4)}
-                                                        <br />
-                                                        +1
-                                                    </button>
-                                                );
-                                            })}
+                                        {/* Power Level Indicator */}
+                                        <div style={{
+                                            width: '100%',
+                                            height: '4px',
+                                            background: '#333',
+                                            borderRadius: '2px',
+                                            marginBottom: '6px',
+                                            position: 'relative'
+                                        }}>
+                                            <div style={{
+                                                width: `${Math.min(100, (allocation / 150) * 100)}%`,
+                                                height: '100%',
+                                                background: `linear-gradient(to right, 
+                                                    #ff8c00 0%, 
+                                                    #ff8c00 76.7%, 
+                                                    #88ff88 76.7%, 
+                                                    #88ff88 86.7%, 
+                                                    #44ff44 86.7%, 
+                                                    #44ff44 100%, 
+                                                    #ffff44 100%)`,
+                                                borderRadius: '2px'
+                                            }} />
+                                            {/* Power threshold markers */}
+                                            <div style={{ position: 'absolute', left: '76.7%', top: '-2px', width: '1px', height: '8px', background: '#fff', opacity: 0.5 }} />
+                                            <div style={{ position: 'absolute', left: '86.7%', top: '-2px', width: '1px', height: '8px', background: '#fff', opacity: 0.5 }} />
+                                            <div style={{ position: 'absolute', left: '100%', top: '-2px', width: '1px', height: '8px', background: '#fff', opacity: 0.5 }} />
                                         </div>
 
-                                        {/* Magnitude Selection for Available Boosts */}
-                                        {hasAvailableBoosts && (
-                                            <div style={{ marginTop: '4px' }}>
-                                                <div style={{ fontSize: '8px', color: '#888', marginBottom: '2px' }}>
-                                                    Magnitude:
-                                                </div>
-                                                <div style={{ display: 'flex', gap: '2px' }}>
-                                                    {[1, 2, 3].map(magnitude => {
-                                                        const performanceBoost = availableBoosts.find(b => b.boostType === 'performance' && b.magnitude === magnitude);
-                                                        const canApplyAny = performanceBoost?.canApply ||
-                                                            availableBoosts.find(b => b.boostType === 'efficiency' && b.magnitude === magnitude)?.canApply ||
-                                                            availableBoosts.find(b => b.boostType === 'output' && b.magnitude === magnitude)?.canApply;
-
-                                                        return (
-                                                            <div key={magnitude} style={{
-                                                                padding: '2px 4px',
-                                                                background: canApplyAny ? 'rgba(255, 140, 0, 0.2)' : 'rgba(68, 68, 68, 0.2)',
-                                                                border: `1px solid ${canApplyAny ? '#ff8c00' : '#444'}`,
-                                                                borderRadius: '2px',
-                                                                fontSize: '7px',
-                                                                color: canApplyAny ? '#ff8c00' : '#888',
-                                                                textAlign: 'center'
-                                                            }}>
-                                                                {magnitude}
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
+                                        {/* Available Dice Boosts */}
+                                        {availableBoosts.length > 0 ? (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                                                {availableBoosts.map((boost, index) => (
+                                                    <div key={index} style={{
+                                                        display: 'flex',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between',
+                                                        padding: '3px',
+                                                        background: `rgba(${boost.color === '#ffff44' ? '255,255,68' : boost.color === '#44ff44' ? '68,255,68' : '136,255,136'}, 0.1)`,
+                                                        borderRadius: '2px',
+                                                        fontSize: '7px'
+                                                    }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                            <div style={{
+                                                                width: '8px',
+                                                                height: '8px',
+                                                                background: boost.color,
+                                                                borderRadius: '1px',
+                                                                border: '1px solid #333'
+                                                            }} />
+                                                            <span style={{ color: boost.color, fontWeight: 'bold' }}>
+                                                                {boost.name}
+                                                            </span>
+                                                        </div>
+                                                        <span style={{ color: '#888', fontSize: '6px' }}>
+                                                            Available
+                                                        </span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <div style={{
+                                                textAlign: 'center',
+                                                color: '#666',
+                                                fontSize: '7px',
+                                                fontStyle: 'italic'
+                                            }}>
+                                                No dice boosts available
+                                                <br />
+                                                (Need 115%+ power)
                                             </div>
                                         )}
                                     </div>
@@ -4204,58 +4153,19 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                             })}
                         </div>
 
-                        {/* Boost Presets Section */}
+                        {/* Power Threshold Legend */}
                         <div style={{
-                            marginTop: 'auto',
-                            padding: '6px',
-                            background: 'rgba(255, 140, 0, 0.1)',
+                            marginTop: '10px',
+                            padding: '4px',
+                            background: 'rgba(0, 0, 0, 0.3)',
                             borderRadius: '4px',
-                            border: '1px solid #ff8c00'
+                            fontSize: '6px'
                         }}>
-                            <div style={{ fontSize: '9px', fontWeight: 'bold', marginBottom: '4px', textAlign: 'center' }}>
-                                QUICK PRESETS
-                            </div>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
-                                <button
-                                    onClick={() => {
-                                        // Combat preset: boost weapons and shields
-                                        applySystemBoost('weapons', 'output', 1);
-                                        applySystemBoost('shields', 'efficiency', 1);
-                                    }}
-                                    style={{
-                                        padding: '4px',
-                                        background: 'linear-gradient(45deg, #ff4444, #ff6666)',
-                                        border: 'none',
-                                        borderRadius: '2px',
-                                        color: '#fff',
-                                        fontSize: '8px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        textTransform: 'uppercase'
-                                    }}
-                                >
-                                    Combat
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        // Speed preset: boost engines and sensors
-                                        applySystemBoost('engines', 'performance', 1);
-                                        applySystemBoost('sensors', 'efficiency', 1);
-                                    }}
-                                    style={{
-                                        padding: '4px',
-                                        background: 'linear-gradient(45deg, #44ff44, #66ff66)',
-                                        border: 'none',
-                                        borderRadius: '2px',
-                                        color: '#000',
-                                        fontSize: '8px',
-                                        fontWeight: 'bold',
-                                        cursor: 'pointer',
-                                        textTransform: 'uppercase'
-                                    }}
-                                >
-                                    Speed
-                                </button>
+                            <div style={{ fontWeight: 'bold', marginBottom: '2px', textAlign: 'center' }}>POWER THRESHOLDS</div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span><span style={{ color: '#88ff88' }}>●</span> 115+ Boost</span>
+                                <span><span style={{ color: '#44ff44' }}>●</span> 130+ Green</span>
+                                <span><span style={{ color: '#ffff44' }}>●</span> 150 Upgrade</span>
                             </div>
                         </div>
                     </div>

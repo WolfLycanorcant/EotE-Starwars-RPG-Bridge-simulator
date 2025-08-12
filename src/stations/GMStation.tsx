@@ -2937,7 +2937,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <input
                     type="range"
                     min="0"
-                    max="100"
+                    max="600"
                     value={localReactorOutput}
                     onChange={(e) => {
                       const newOutput = parseInt(e.target.value);
@@ -2978,24 +2978,24 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       accentColor: 'var(--gm-green)'
                     }}
                   />
-                  <span>{localReactorOutput}%</span>
+                  <span>{localReactorOutput}</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '8px' }}>
                   <EmitButton onClick={() => {
-                    setLocalReactorOutput(75);
-                    emit('set_reactor_output', 75, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 75 }, 'engineering');
-                  }}>75% (Normal)</EmitButton>
+                    setLocalReactorOutput(450);
+                    emit('set_reactor_output', 450, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 450 }, 'engineering');
+                  }}>450 (Normal)</EmitButton>
                   <EmitButton onClick={() => {
-                    setLocalReactorOutput(100);
-                    emit('set_reactor_output', 100, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 100 }, 'engineering');
-                  }}>100% (Max)</EmitButton>
+                    setLocalReactorOutput(600);
+                    emit('set_reactor_output', 600, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 600 }, 'engineering');
+                  }}>600 (Max)</EmitButton>
                   <EmitButton onClick={() => {
-                    setLocalReactorOutput(50);
-                    emit('set_reactor_output', 50, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 50 }, 'engineering');
-                  }}>50% (Low Power)</EmitButton>
+                    setLocalReactorOutput(300);
+                    emit('set_reactor_output', 300, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 300 }, 'engineering');
+                  }}>300 (Low Power)</EmitButton>
                 </div>
 
                 {/* Engineering System Damage Controls */}
