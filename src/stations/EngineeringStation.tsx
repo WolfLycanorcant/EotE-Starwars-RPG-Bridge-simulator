@@ -127,19 +127,25 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     // Droid management state
     const [availableDroids, setAvailableDroids] = useState<number>(20);
 
+    // Ship strain management state
+    const [shipStrain, setShipStrain] = useState<{ current: number; maximum: number }>({
+        current: 0,
+        maximum: 100
+    });
+
     // Initialize engineering state with default values
     const [engineeringState, setEngineeringState] = useState<EngineeringState>({
         powerDistribution: {
-            totalPower: 100,
-            reactorOutput: 100,
+            totalPower: 600,
+            reactorOutput: 600,
             emergencyPower: false,
             powerAllocations: {
-                weapons: 20,
-                shields: 25,
-                engines: 20,
-                sensors: 15,
-                lifeSupport: 15,
-                communications: 5,
+                weapons: 100,
+                shields: 150,
+                engines: 120,
+                sensors: 90,
+                lifeSupport: 90,
+                communications: 50,
             },
         },
         systemStatus: {
@@ -1549,6 +1555,22 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         emitStateUpdate();
     };
 
+    const handleGMShipStrainUpdate = (strainData: { current: number; maximum: number }) => {
+        const { current, maximum } = strainData;
+
+        // Update the ship strain state
+        setShipStrain({
+            current: current,
+            maximum: maximum
+        });
+
+        console.log(`🎯 GM Event: Ship strain updated - Current: ${current}, Max: ${maximum}`);
+        addErrorMessage(`Ship strain set to ${current}/${maximum}`, current > 70 ? 'warning' : 'info');
+
+        // Emit state update to GM
+        emitStateUpdate();
+    };
+
     // Performance tracking for GM feedback
     const trackEngineeringPerformance = () => {
         const performance = {
@@ -2494,6 +2516,9 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     case 'droid_allocation':
                         handleGMDroidAllocation(data.value);
                         break;
+                    case 'ship_strain_update':
+                        handleGMShipStrainUpdate(data.value);
+                        break;
                     default:
                         console.log('Unknown GM broadcast type:', data.type);
                         addErrorMessage(`Unknown GM broadcast: ${data.type}`, 'warning');
@@ -2765,6 +2790,17 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     {calculateTotalAllocatedPower()} units
                                 </span>
                             </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                <span>Ship Strain:</span>
+                                <span style={{
+                                    fontWeight: 'bold',
+                                    color: (() => {
+                                        return shipStrain.current > 70 ? '#ff4444' : shipStrain.current > 40 ? '#ffaa44' : '#44ff44';
+                                    })()
+                                }}>
+                                    {shipStrain.current}/{shipStrain.maximum}
+                                </span>
+                            </div>
                         </div>
 
                         {/* Emergency Power Toggle */}
@@ -2826,7 +2862,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                         <input
                                             type="range"
                                             min="0"
-                                            max="50"
+                                            max="100"
                                             value={allocation}
                                             onChange={(e) => updatePowerAllocationSafe(systemName, parseInt(e.target.value))}
                                             style={{
@@ -2834,10 +2870,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 height: '6px',
                                                 background: `linear-gradient(to right, 
                                                 #ff4444 0%, 
-                                                #ff4444 ${(requirements.minimum / 50) * 100}%, 
-                                                #ffaa44 ${(requirements.minimum / 50) * 100}%, 
-                                                #ffaa44 ${(requirements.optimal / 50) * 100}%, 
-                                                #44ff44 ${(requirements.optimal / 50) * 100}%, 
+                                                #ff4444 ${(requirements.minimum / 100) * 100}%, 
+                                                #ffaa44 ${(requirements.minimum / 100) * 100}%, 
+                                                #ffaa44 ${(requirements.optimal / 100) * 100}%, 
+                                                #44ff44 ${(requirements.optimal / 100) * 100}%, 
                                                 #44ff44 100%)`,
                                                 borderRadius: '3px',
                                                 outline: 'none',

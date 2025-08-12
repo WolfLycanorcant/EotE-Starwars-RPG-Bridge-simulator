@@ -3030,42 +3030,42 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       console.log('🔧 GM: Sending weapons damage command');
                       sendBroadcast('system_damage', { 
                         system: 'weapons', 
-                        damage: 25, 
+                        damage: 5, 
                         type: 'combat_damage' 
                       }, 'engineering');
                     }}>Damage Weapons</EmitRed>
                     <EmitRed onClick={() => {
                       sendBroadcast('system_damage', { 
                         system: 'shields', 
-                        damage: 30, 
+                        damage: 5, 
                         type: 'overload' 
                       }, 'engineering');
                     }}>Damage Shields</EmitRed>
                     <EmitRed onClick={() => {
                       sendBroadcast('system_damage', { 
                         system: 'engines', 
-                        damage: 20, 
+                        damage: 5, 
                         type: 'mechanical_failure' 
                       }, 'engineering');
                     }}>Damage Engines</EmitRed>
                     <EmitRed onClick={() => {
                       sendBroadcast('system_damage', { 
                         system: 'lifeSupport', 
-                        damage: 35, 
+                        damage: 5, 
                         type: 'critical_failure' 
                       }, 'engineering');
                     }}>Damage Life Support</EmitRed>
                     <EmitRed onClick={() => {
                       sendBroadcast('system_damage', { 
                         system: 'sensors', 
-                        damage: 30, 
+                        damage: 5, 
                         type: 'sensor_malfunction' 
                       }, 'engineering');
                     }}>Damage Sensors</EmitRed>
                     <EmitRed onClick={() => {
                       sendBroadcast('system_damage', { 
                         system: 'communications', 
-                        damage: 25, 
+                        damage: 5, 
                         type: 'communication_failure' 
                       }, 'engineering');
                     }}>Damage Communications</EmitRed>
@@ -3239,6 +3239,184 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   </div>
                 </div>
 
+                {/* Ship Strain Controls */}
+                <div style={{ 
+                  marginTop: 15, 
+                  padding: '8px', 
+                  background: 'rgba(255, 68, 68, 0.1)', 
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-red)'
+                }}>
+                  <div style={{ 
+                    fontSize: '0.9rem', 
+                    color: 'var(--gm-red)', 
+                    marginBottom: '8px', 
+                    fontWeight: 'bold' 
+                  }}>
+                    SHIP STRAIN CONTROLS:
+                  </div>
+                  <Row>
+                    <span>Current Strain:</span>
+                    <span style={{
+                      color: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' : 
+                             (states.engineering?.shipStrain?.current ?? 0) > 40 ? 'var(--gm-yellow)' : 'var(--gm-green)'
+                    }}>
+                      {states.engineering?.shipStrain?.current ?? 0}
+                    </span>
+                  </Row>
+                  <Row>
+                    <span>Max Strain:</span>
+                    <span style={{ color: 'var(--gm-blue)' }}>
+                      {states.engineering?.shipStrain?.maximum ?? 100}
+                    </span>
+                  </Row>
+                  
+                  {/* Current Strain Slider */}
+                  <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', marginBottom: '4px', color: 'var(--gm-red)' }}>
+                      Current Strain:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max={states.engineering?.shipStrain?.maximum ?? 100}
+                        value={states.engineering?.shipStrain?.current ?? 0}
+                        onChange={(e) => {
+                          const newStrain = parseInt(e.target.value);
+                          
+                          // Update local state
+                          setStates(prev => ({
+                            ...prev,
+                            engineering: {
+                              ...prev.engineering,
+                              shipStrain: {
+                                ...prev.engineering?.shipStrain,
+                                current: newStrain,
+                                maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                              }
+                            }
+                          }));
+                          
+                          // Send to engineering station
+                          sendBroadcast('ship_strain_update', { 
+                            current: newStrain,
+                            maximum: states.engineering?.shipStrain?.maximum ?? 100
+                          }, 'engineering');
+                        }}
+                        style={{
+                          width: '100%',
+                          accentColor: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' : 'var(--gm-yellow)'
+                        }}
+                      />
+                      <span style={{ minWidth: '30px', fontSize: '0.8rem' }}>
+                        {states.engineering?.shipStrain?.current ?? 0}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Max Strain Slider */}
+                  <div style={{ marginTop: '8px', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '0.8rem', marginBottom: '4px', color: 'var(--gm-blue)' }}>
+                      Max Strain Limit:
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={states.engineering?.shipStrain?.maximum ?? 100}
+                        onChange={(e) => {
+                          const newMaxStrain = parseInt(e.target.value);
+                          
+                          // Update local state
+                          setStates(prev => ({
+                            ...prev,
+                            engineering: {
+                              ...prev.engineering,
+                              shipStrain: {
+                                current: Math.min(prev.engineering?.shipStrain?.current ?? 0, newMaxStrain),
+                                maximum: newMaxStrain
+                              }
+                            }
+                          }));
+                          
+                          // Send to engineering station
+                          sendBroadcast('ship_strain_update', { 
+                            current: Math.min(states.engineering?.shipStrain?.current ?? 0, newMaxStrain),
+                            maximum: newMaxStrain
+                          }, 'engineering');
+                        }}
+                        style={{
+                          width: '100%',
+                          accentColor: 'var(--gm-blue)'
+                        }}
+                      />
+                      <span style={{ minWidth: '30px', fontSize: '0.8rem' }}>
+                        {states.engineering?.shipStrain?.maximum ?? 100}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Strain Preset Buttons */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '8px' }}>
+                    <EmitButton onClick={() => {
+                      const newStrain = 0;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { 
+                          ...prev.engineering, 
+                          shipStrain: { 
+                            ...prev.engineering?.shipStrain,
+                            current: newStrain,
+                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                          }
+                        }
+                      }));
+                      sendBroadcast('ship_strain_update', { 
+                        current: newStrain,
+                        maximum: states.engineering?.shipStrain?.maximum ?? 100
+                      }, 'engineering');
+                    }}>0 (Reset)</EmitButton>
+                    <EmitButton onClick={() => {
+                      const newStrain = 50;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { 
+                          ...prev.engineering, 
+                          shipStrain: { 
+                            ...prev.engineering?.shipStrain,
+                            current: newStrain,
+                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                          }
+                        }
+                      }));
+                      sendBroadcast('ship_strain_update', { 
+                        current: newStrain,
+                        maximum: states.engineering?.shipStrain?.maximum ?? 100
+                      }, 'engineering');
+                    }}>50 (Moderate)</EmitButton>
+                    <EmitRed onClick={() => {
+                      const newStrain = 90;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { 
+                          ...prev.engineering, 
+                          shipStrain: { 
+                            ...prev.engineering?.shipStrain,
+                            current: newStrain,
+                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                          }
+                        }
+                      }));
+                      sendBroadcast('ship_strain_update', { 
+                        current: newStrain,
+                        maximum: states.engineering?.shipStrain?.maximum ?? 100
+                      }, 'engineering');
+                    }}>90 (Critical)</EmitRed>
+                  </div>
+                </div>
+
                 {/* Engineering Configuration Controls */}
                 <div style={{ 
                   marginTop: 15, 
@@ -3285,192 +3463,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
               </div>
 
-              {/* Max Available Power Control */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                background: 'rgba(0, 0, 0, 0.4)', 
-                border: '1px solid var(--gm-blue)', 
-                borderRadius: '4px' 
-              }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-yellow)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
-                }}>
-                  MAX AVAILABLE POWER CONTROL:
-                </div>
-                <Row>
-                  <span>Max Available Power:</span>
-                  <span style={{ color: 'var(--gm-green)' }}>
-                    {states.engineering?.powerDistribution?.maxAvailable ?? 100}%
-                  </span>
-                </Row>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px', 
-                  marginTop: '8px' 
-                }}>
-                  <EmitButton 
-                    onClick={() => {
-                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
-                      const newMax = Math.max(0, currentMax - 10);
-                      emit('set_max_power_output', newMax, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: newMax
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                  >
-                    -10%
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
-                      const newMax = Math.max(0, currentMax - 25);
-                      emit('set_max_power_output', newMax, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: newMax
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                  >
-                    -25%
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
-                      const newMax = Math.min(200, currentMax + 10);
-                      emit('set_max_power_output', newMax, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: newMax
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                  >
-                    +10%
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
-                      const newMax = Math.min(200, currentMax + 25);
-                      emit('set_max_power_output', newMax, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: newMax
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                  >
-                    +25%
-                  </EmitButton>
-                </div>
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '8px', 
-                  marginTop: '8px' 
-                }}>
-                  <EmitButton 
-                    onClick={() => {
-                      emit('set_max_power_output', 50, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: 50
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'rgba(255, 136, 0, 0.1)', borderColor: '#ff8800', color: '#ff8800' }}
-                  >
-                    CRITICAL (50%)
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      emit('set_max_power_output', 100, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: 100
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
-                  >
-                    NORMAL (100%)
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      emit('set_max_power_output', 200, 'engineering');
-                      // Update GM's local state immediately
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            maxAvailable: 200
-                          }
-                        }
-                      }));
-                    }}
-                    style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'rgba(255, 0, 0, 0.1)', borderColor: '#ff0000', color: '#ff0000' }}
-                  >
-                    OVERLOAD (200%)
-                  </EmitButton>
-                  <EmitButton 
-                    onClick={() => {
-                      console.log('🧪 GM Station: Testing connection to Engineering');
-                      emit('test_connection', { message: 'Hello Engineering!', timestamp: Date.now() }, 'engineering');
-                    }}
-                    style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(0, 255, 255, 0.1)', borderColor: '#00ffff', color: '#00ffff' }}
-                  >
-                    TEST CONN
-                  </EmitButton>
-                </div>
-              </div>
+
 
               <div style={{ marginTop: 10 }}>
                 <EmitButton onClick={() => emit('toggle_emergency_power', true)}>
