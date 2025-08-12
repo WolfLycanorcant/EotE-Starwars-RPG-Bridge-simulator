@@ -124,6 +124,9 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     // Power history tracking
     const [powerHistory, setPowerHistory] = useState<Array<{ timestamp: number; allocations: typeof engineeringState.powerDistribution.powerAllocations }>>([]);
 
+    // Droid management state
+    const [availableDroids, setAvailableDroids] = useState<number>(20);
+
     // Initialize engineering state with default values
     const [engineeringState, setEngineeringState] = useState<EngineeringState>({
         powerDistribution: {
@@ -159,7 +162,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     // Power calculation functions
     const calculateTotalAvailablePower = (): number => {
         const basePower = engineeringState.powerDistribution.reactorOutput;
-        const emergencyBonus = engineeringState.powerDistribution.emergencyPower ? 20 : 0;
+        const emergencyBonus = engineeringState.powerDistribution.emergencyPower ? 100 : 0;
         return basePower + emergencyBonus;
     };
 
@@ -208,6 +211,23 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         return Math.round(effectivePower);
     };
 
+    // Helper function to emit state updates to GM station
+    const emitStateUpdate = (updatedState?: Partial<EngineeringState>) => {
+        if (socket) {
+            const currentState = updatedState || engineeringState;
+            socket.emit('state_update', {
+                station: 'engineering',
+                state: {
+                    powerDistribution: currentState.powerDistribution || engineeringState.powerDistribution,
+                    systemStatus: currentState.systemStatus || engineeringState.systemStatus,
+                    repairQueue: currentState.repairQueue || engineeringState.repairQueue,
+                    activeBoosts: currentState.activeBoosts || engineeringState.activeBoosts,
+                    emergencyProcedures: currentState.emergencyProcedures || engineeringState.emergencyProcedures
+                }
+            });
+        }
+    };
+
     // Power allocation update function
     const updatePowerAllocation = (systemName: string, newValue: number) => {
         if (!validatePowerAllocation(systemName, newValue)) {
@@ -220,12 +240,14 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             [systemName]: newValue
         };
 
+        const updatedPowerDistribution = {
+            ...engineeringState.powerDistribution,
+            powerAllocations: newAllocations
+        };
+
         setEngineeringState(prev => ({
             ...prev,
-            powerDistribution: {
-                ...prev.powerDistribution,
-                powerAllocations: newAllocations
-            }
+            powerDistribution: updatedPowerDistribution
         }));
 
         // Add to power history (keep last 20 entries)
@@ -251,6 +273,15 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 effectivePower: effectivePower,
                 totalAllocated: Object.values(newAllocations).reduce((total, allocation) => total + allocation, 0),
                 efficiency: calculatePowerEfficiency(systemName, newValue) / newValue * 100
+            });
+
+            // Emit state update for GM station
+            emitStateUpdate({
+                powerDistribution: updatedPowerDistribution,
+                systemStatus: engineeringState.systemStatus,
+                repairQueue: engineeringState.repairQueue,
+                activeBoosts: engineeringState.activeBoosts,
+                emergencyProcedures: engineeringState.emergencyProcedures
             });
         }
 
@@ -379,21 +410,21 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         return Math.round(baseDifficulty[damageType] * complexity);
     };
 
-    const calculateRepairTime = (damageType: 'minor' | 'major' | 'critical', assignedCrew: number): number => {
+    const calculateRepairTime = (damageType: 'minor' | 'major' | 'critical', assignedDroids: number): number => {
         const baseTime = {
             minor: 30,    // 30 seconds
             major: 90,    // 1.5 minutes
             critical: 180 // 3 minutes
         };
 
-        // More crew reduces repair time (diminishing returns)
-        const crewEfficiency = Math.min(2.0, 1 + (assignedCrew - 1) * 0.3);
-        return Math.round(baseTime[damageType] / crewEfficiency);
+        // More droids reduces repair time (diminishing returns)
+        const droidEfficiency = Math.min(2.0, 1 + (assignedDroids - 1) * 0.3);
+        return Math.round(baseTime[damageType] / droidEfficiency);
     };
 
-    const createRepairTask = (systemName: string, damageType: 'minor' | 'major' | 'critical', assignedCrew: number = 1): RepairTask => {
+    const createRepairTask = (systemName: string, damageType: 'minor' | 'major' | 'critical', assignedDroids: number = 1): RepairTask => {
         const difficulty = calculateRepairDifficulty(systemName, damageType);
-        const timeRequired = calculateRepairTime(damageType, assignedCrew);
+        const timeRequired = calculateRepairTime(damageType, assignedDroids);
 
         return {
             id: generateRepairTaskId(),
@@ -402,12 +433,12 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             difficulty,
             timeRequired,
             progress: 0,
-            assignedCrew,
+            assignedCrew: assignedDroids,
             juryRigged: false
         };
     };
 
-    const addRepairTask = (systemName: string, damageType: 'minor' | 'major' | 'critical', assignedCrew: number = 1) => {
+    const addRepairTask = (systemName: string, damageType: 'minor' | 'major' | 'critical', assignedDroids: number = 1) => {
         // Check if there's already a repair task for this system
         const existingTask = engineeringState.repairQueue.find(task => task.systemName === systemName);
         if (existingTask) {
@@ -415,7 +446,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             return;
         }
 
-        const newTask = createRepairTask(systemName, damageType, assignedCrew);
+        const newTask = createRepairTask(systemName, damageType, assignedDroids);
 
         setEngineeringState(prev => ({
             ...prev,
@@ -435,18 +466,18 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             });
         }
 
-        console.log(`🔧 Repair task created for ${systemName}: ${damageType} damage (${assignedCrew} crew assigned)`);
+        console.log(`🔧 Repair task created for ${systemName}: ${damageType} damage (${assignedDroids} droids assigned)`);
     };
 
-    const updateRepairTaskCrew = (taskId: string, newCrewCount: number) => {
+    const updateRepairTaskDroids = (taskId: string, newDroidCount: number) => {
         setEngineeringState(prev => ({
             ...prev,
             repairQueue: prev.repairQueue.map(task => {
                 if (task.id === taskId) {
-                    const updatedTimeRequired = calculateRepairTime(task.damageType, newCrewCount);
+                    const updatedTimeRequired = calculateRepairTime(task.damageType, newDroidCount);
                     return {
                         ...task,
-                        assignedCrew: newCrewCount,
+                        assignedCrew: newDroidCount,
                         timeRequired: updatedTimeRequired
                     };
                 }
@@ -454,7 +485,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             })
         }));
 
-        console.log(`👥 Repair task ${taskId} crew updated to ${newCrewCount}`);
+        console.log(`🤖 Repair task ${taskId} droids updated to ${newDroidCount}`);
     };
 
     const removeRepairTask = (taskId: string) => {
@@ -550,7 +581,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         const skillCheck = performSkillCheck(task.difficulty);
         const effectiveness = calculateRepairEffectiveness(skillCheck.quality, task.juryRigged);
 
-        // Calculate progress increment based on crew size and effectiveness
+        // Calculate progress increment based on droid team size and effectiveness
         const baseProgress = (100 / (task.timeRequired / 10)) * task.assignedCrew; // Progress per 10-second interval
         const actualProgress = baseProgress * effectiveness;
 
@@ -1012,7 +1043,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             }));
         } else {
             // Create new emergency repair task
-            const emergencyTask = createRepairTask(systemName, damageAssessment.damageType!, 2); // 2 crew assigned
+            const emergencyTask = createRepairTask(systemName, damageAssessment.damageType!, 2); // 2 droids assigned
             emergencyTask.juryRigged = true;
             emergencyTask.timeRequired = Math.round(emergencyTask.timeRequired * 0.3); // 30% of normal time
 
@@ -1228,6 +1259,53 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         console.log(`🎯 GM Event: Power system update`, powerData);
     };
 
+    const handleReactorOutputChange = (newOutput: number) => {
+        // Validate reactor output range (0-100% normal operation)
+        const clampedOutput = Math.max(0, Math.min(100, newOutput));
+
+        setEngineeringState(prev => {
+            const updatedPowerDistribution = {
+                ...prev.powerDistribution,
+                reactorOutput: clampedOutput,
+                totalPower: clampedOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
+            };
+
+            return {
+                ...prev,
+                powerDistribution: updatedPowerDistribution
+            };
+        });
+
+        // Emit reactor output change to other stations
+        if (socket) {
+            socket.emit('engineering_action', {
+                room: new URLSearchParams(window.location.search).get('room') || 'default',
+                type: 'reactor_output_change',
+                value: clampedOutput,
+                totalPower: clampedOutput + (engineeringState.powerDistribution.emergencyPower ? 100 : 0)
+            });
+
+            // Emit state update so GM station can sync its UI
+            emitStateUpdate({
+                powerDistribution: {
+                    ...engineeringState.powerDistribution,
+                    reactorOutput: clampedOutput,
+                    totalPower: clampedOutput + (engineeringState.powerDistribution.emergencyPower ? 100 : 0)
+                },
+                systemStatus: engineeringState.systemStatus,
+                repairQueue: engineeringState.repairQueue,
+                activeBoosts: engineeringState.activeBoosts,
+                emergencyProcedures: engineeringState.emergencyProcedures
+            });
+        }
+
+        console.log(`⚡ Reactor output changed by GM: ${clampedOutput}%`);
+
+        // Add visual feedback
+        addErrorMessage(`Reactor output set to ${clampedOutput}%${clampedOutput > 100 ? ' [OVERLOAD]' : ''}`,
+            clampedOutput > 100 ? 'warning' : 'info');
+    };
+
     const handleGMReactorFluctuation = (fluctuationData: { intensity: number; duration: number }) => {
         const { intensity, duration } = fluctuationData;
 
@@ -1240,7 +1318,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             powerDistribution: {
                 ...prev.powerDistribution,
                 reactorOutput: fluctuationOutput,
-                totalPower: fluctuationOutput + (prev.powerDistribution.emergencyPower ? 20 : 0)
+                totalPower: fluctuationOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
             }
         }));
 
@@ -1251,7 +1329,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 powerDistribution: {
                     ...prev.powerDistribution,
                     reactorOutput: originalOutput,
-                    totalPower: originalOutput + (prev.powerDistribution.emergencyPower ? 20 : 0)
+                    totalPower: originalOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
                 }
             }));
             console.log(`🎯 GM Event: Reactor fluctuation ended - Output restored to ${originalOutput}%`);
@@ -1358,6 +1436,117 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         }
 
         console.log(`🎯 GM Event: Random event - ${type}: ${description}`);
+    };
+
+    const handleGMSystemRepair = (repairData: { system: string; amount: number }) => {
+        const { system, amount } = repairData;
+
+        if (system === 'all') {
+            // Repair all systems
+            setEngineeringState(prev => {
+                const updatedSystemStatus = { ...prev.systemStatus };
+
+                Object.keys(updatedSystemStatus).forEach(systemName => {
+                    const currentSystem = updatedSystemStatus[systemName];
+                    const newHealth = Math.min(100, currentSystem.health + amount);
+
+                    updatedSystemStatus[systemName] = {
+                        ...currentSystem,
+                        health: newHealth,
+                        damaged: newHealth < 80,
+                        criticalDamage: newHealth < 30,
+                        efficiency: Math.max(20, Math.round(newHealth * 0.8 + 20)),
+                        strain: Math.max(0, Math.round((100 - newHealth) * 0.5))
+                    };
+                });
+
+                return {
+                    ...prev,
+                    systemStatus: updatedSystemStatus
+                };
+            });
+
+            console.log(`🔧 GM Event: All systems repaired (+${amount}% health)`);
+            addErrorMessage(`All systems repaired: +${amount}% health`, 'info');
+        } else {
+            // Repair specific system
+            setEngineeringState(prev => {
+                const currentSystem = prev.systemStatus[system];
+                if (!currentSystem) return prev;
+
+                const newHealth = Math.min(100, currentSystem.health + amount);
+
+                return {
+                    ...prev,
+                    systemStatus: {
+                        ...prev.systemStatus,
+                        [system]: {
+                            ...currentSystem,
+                            health: newHealth,
+                            damaged: newHealth < 80,
+                            criticalDamage: newHealth < 30,
+                            efficiency: Math.max(20, Math.round(newHealth * 0.8 + 20)),
+                            strain: Math.max(0, Math.round((100 - newHealth) * 0.5))
+                        }
+                    }
+                };
+            });
+
+            console.log(`🔧 GM Event: ${system} repaired (+${amount}% health)`);
+            addErrorMessage(`${system} system repaired: +${amount}% health`, 'info');
+        }
+
+        // Emit state update
+        emitStateUpdate();
+    };
+
+    const handleGMDroidAllocation = (allocationData: { availableDroids: number }) => {
+        const { availableDroids: newDroidCount } = allocationData;
+
+        // Update available droids
+        setAvailableDroids(newDroidCount);
+
+        // If we now have fewer droids than are currently assigned, we need to adjust repair tasks
+        const totalAssignedDroids = engineeringState.repairQueue.reduce((sum, task) => sum + task.assignedCrew, 0);
+
+        if (totalAssignedDroids > newDroidCount) {
+            // Need to reduce droid assignments to fit within new limit
+            setEngineeringState(prev => {
+                const updatedRepairQueue = [...prev.repairQueue];
+                let remainingDroids = newDroidCount;
+
+                // Prioritize critical repairs first
+                updatedRepairQueue.sort((a, b) => {
+                    const priorityOrder = { critical: 3, major: 2, minor: 1 };
+                    return priorityOrder[b.damageType] - priorityOrder[a.damageType];
+                });
+
+                // Reassign droids based on priority
+                updatedRepairQueue.forEach(task => {
+                    const droidsNeeded = Math.min(task.assignedCrew, remainingDroids);
+                    task.assignedCrew = Math.max(1, droidsNeeded); // Minimum 1 droid per task
+                    task.timeRequired = calculateRepairTime(task.damageType, task.assignedCrew);
+                    remainingDroids -= task.assignedCrew;
+                });
+
+                // Remove tasks that can't be assigned any droids (if we're at 0 droids)
+                const finalRepairQueue = newDroidCount > 0 ? updatedRepairQueue : [];
+
+                return {
+                    ...prev,
+                    repairQueue: finalRepairQueue
+                };
+            });
+
+            addErrorMessage(`Droid allocation reduced to ${newDroidCount}. Repair assignments adjusted.`, 'warning');
+        } else {
+            addErrorMessage(`Droid allocation updated: ${newDroidCount} droids available`, 'info');
+        }
+
+        console.log(`🤖 GM Event: Droid allocation changed to ${newDroidCount} droids`);
+
+        // Emit state update to GM
+        emitStateUpdate();
     };
 
     // Performance tracking for GM feedback
@@ -1867,13 +2056,13 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         return { valid: true };
     };
 
-    const validateCrewAssignment = (taskId: string, crewCount: number): { valid: boolean; error?: string } => {
-        if (isNaN(crewCount) || crewCount < 1) {
-            return { valid: false, error: 'Crew assignment must be at least 1' };
+    const validateDroidAssignment = (taskId: string, droidCount: number): { valid: boolean; error?: string } => {
+        if (isNaN(droidCount) || droidCount < 1) {
+            return { valid: false, error: 'Droid assignment must be at least 1' };
         }
 
-        if (crewCount > 10) {
-            return { valid: false, error: 'Cannot assign more than 10 crew members to a single task' };
+        if (droidCount > 10) {
+            return { valid: false, error: 'Cannot assign more than 10 droids to a single task' };
         }
 
         const task = engineeringState.repairQueue.find(t => t.id === taskId);
@@ -1881,14 +2070,14 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             return { valid: false, error: 'Repair task not found' };
         }
 
-        // Check total crew availability (simplified - assume 20 total crew)
-        const totalAssignedCrew = engineeringState.repairQueue.reduce((sum, t) => sum + t.assignedCrew, 0);
-        const availableCrew = 20 - totalAssignedCrew + task.assignedCrew; // Add back current task's crew
+        // Check total droid availability using GM-controlled droid count
+        const totalAssignedDroids = engineeringState.repairQueue.reduce((sum, t) => sum + t.assignedCrew, 0);
+        const availableDroidsForTask = availableDroids - totalAssignedDroids + task.assignedCrew; // Add back current task's droids
 
-        if (crewCount > availableCrew) {
+        if (droidCount > availableDroidsForTask) {
             return {
                 valid: false,
-                error: `Insufficient crew available: ${crewCount} requested, only ${availableCrew} available`
+                error: `Insufficient droids available: ${droidCount} requested, only ${availableDroidsForTask} available`
             };
         }
 
@@ -2069,10 +2258,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         }
     };
 
-    // Enhanced crew assignment with validation
-    const updateRepairTaskCrewSafe = (taskId: string, newCrewCount: number) => {
+    // Enhanced droid assignment with validation
+    const updateRepairTaskDroidsSafe = (taskId: string, newDroidCount: number) => {
         try {
-            const validation = validateCrewAssignment(taskId, newCrewCount);
+            const validation = validateDroidAssignment(taskId, newDroidCount);
             if (!validation.valid) {
                 addErrorMessage(validation.error!, 'error');
                 return false;
@@ -2082,10 +2271,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 ...prev,
                 repairQueue: prev.repairQueue.map(task => {
                     if (task.id === taskId) {
-                        const updatedTimeRequired = calculateRepairTime(task.damageType, newCrewCount);
+                        const updatedTimeRequired = calculateRepairTime(task.damageType, newDroidCount);
                         return {
                             ...task,
-                            assignedCrew: newCrewCount,
+                            assignedCrew: newDroidCount,
                             timeRequired: updatedTimeRequired
                         };
                     }
@@ -2093,12 +2282,12 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 })
             }));
 
-            console.log(`👥 Repair task ${taskId} crew updated to ${newCrewCount}`);
+            console.log(`🤖 Repair task ${taskId} droids updated to ${newDroidCount}`);
             return true;
 
         } catch (error) {
-            addErrorMessage(`Failed to update crew assignment: ${error}`, 'error');
-            console.error('Crew assignment error:', error);
+            addErrorMessage(`Failed to update droid assignment: ${error}`, 'error');
+            console.error('Droid assignment error:', error);
             return false;
         }
     };
@@ -2198,7 +2387,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         const newEmergencyState = !engineeringState.powerDistribution.emergencyPower;
 
         const basePower = engineeringState.powerDistribution.reactorOutput;
-        const newTotalPower = basePower + (newEmergencyState ? 20 : 0);
+        const newTotalPower = basePower + (newEmergencyState ? 100 : 0);
 
         setEngineeringState(prev => ({
             ...prev,
@@ -2270,10 +2459,19 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         socket.on('gm_broadcast', (data: { type: string; value: any; room: string; source: string }) => {
             try {
                 console.log('🔧 Engineering Station received GM broadcast:', data);
+                console.log('🔧 Engineering Station - Broadcast type:', data.type, 'Value:', data.value);
 
                 switch (data.type) {
+                    case 'test_connection':
+                        console.log('🧪 Engineering Station: Test connection received!', data.value);
+                        addErrorMessage('GM connection test received!', 'info');
+                        break;
                     case 'system_damage':
+                        console.log('🔧 Engineering Station: Processing system damage:', data.value);
                         handleGMSystemDamage(data.value);
+                        break;
+                    case 'system_repair':
+                        handleGMSystemRepair(data.value);
                         break;
                     case 'system_malfunction':
                         handleGMSystemMalfunction(data.value);
@@ -2293,6 +2491,9 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     case 'random_event':
                         handleGMRandomEvent(data.value);
                         break;
+                    case 'droid_allocation':
+                        handleGMDroidAllocation(data.value);
+                        break;
                     default:
                         console.log('Unknown GM broadcast type:', data.type);
                         addErrorMessage(`Unknown GM broadcast: ${data.type}`, 'warning');
@@ -2301,6 +2502,28 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             } catch (error) {
                 addErrorMessage(`Error processing GM broadcast: ${error}`, 'error');
                 console.error('GM broadcast error:', error);
+            }
+        });
+
+        // Listen for player actions from GM station
+        socket.on('player_action', (data: { action: string; value: any; room: string; target?: string }) => {
+            try {
+                console.log('🔧 Engineering Station received player action:', data);
+
+                // Only process actions targeted at engineering station
+                if (data.target === 'engineering' || !data.target) {
+                    switch (data.action) {
+                        case 'set_reactor_output':
+                            handleReactorOutputChange(data.value);
+                            break;
+                        default:
+                            console.log('Unknown player action:', data.action);
+                            break;
+                    }
+                }
+            } catch (error) {
+                addErrorMessage(`Error processing player action: ${error}`, 'error');
+                console.error('Player action error:', error);
             }
         });
 
@@ -2872,6 +3095,37 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     <h3 style={panelTitleStyle}>REPAIR QUEUE</h3>
                     <div style={{ color: '#ff8c00', fontSize: '12px', height: '100%', display: 'flex', flexDirection: 'column' }}>
 
+                        {/* Droid Availability Display */}
+                        <div style={{
+                            marginBottom: '15px',
+                            padding: '6px',
+                            background: 'rgba(255, 140, 0, 0.1)',
+                            borderRadius: '4px',
+                            border: `1px solid ${availableDroids < 10 ? '#ff4444' : '#ff8c00'}`
+                        }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 'bold' }}>Available Droids:</span>
+                                <span style={{
+                                    fontWeight: 'bold',
+                                    color: availableDroids < 10 ? '#ff4444' : availableDroids < 15 ? '#ffaa44' : '#44ff44'
+                                }}>
+                                    {availableDroids}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
+                                <span>Assigned:</span>
+                                <span style={{ color: '#ffaa44' }}>
+                                    {engineeringState.repairQueue.reduce((sum, task) => sum + task.assignedCrew, 0)}
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9px' }}>
+                                <span>Free:</span>
+                                <span style={{ color: '#44ff44' }}>
+                                    {availableDroids - engineeringState.repairQueue.reduce((sum, task) => sum + task.assignedCrew, 0)}
+                                </span>
+                            </div>
+                        </div>
+
                         {/* Ship Schematic with Damage Overlays */}
                         <div style={{ marginBottom: '15px', padding: '8px', background: 'rgba(255, 140, 0, 0.1)', borderRadius: '4px' }}>
                             <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '6px', textAlign: 'center' }}>
@@ -3314,10 +3568,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 alignItems: 'center',
                                                 marginBottom: '4px'
                                             }}>
-                                                <span style={{ fontSize: '9px' }}>Crew Assigned:</span>
+                                                <span style={{ fontSize: '9px' }}>Droids Assigned:</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <button
-                                                        onClick={() => updateRepairTaskCrew(repair.id, Math.max(1, repair.assignedCrew - 1))}
+                                                        onClick={() => updateRepairTaskDroidsSafe(repair.id, Math.max(1, repair.assignedCrew - 1))}
                                                         disabled={repair.assignedCrew <= 1}
                                                         style={{
                                                             width: '16px',
@@ -3339,17 +3593,35 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                         {repair.assignedCrew}
                                                     </span>
                                                     <button
-                                                        onClick={() => updateRepairTaskCrew(repair.id, Math.min(5, repair.assignedCrew + 1))}
-                                                        disabled={repair.assignedCrew >= 5}
+                                                        onClick={() => {
+                                                            const newDroidCount = repair.assignedCrew + 1;
+                                                            const validation = validateDroidAssignment(repair.id, newDroidCount);
+                                                            if (validation.valid) {
+                                                                updateRepairTaskDroidsSafe(repair.id, newDroidCount);
+                                                            }
+                                                        }}
+                                                        disabled={(() => {
+                                                            const newDroidCount = repair.assignedCrew + 1;
+                                                            const validation = validateDroidAssignment(repair.id, newDroidCount);
+                                                            return !validation.valid;
+                                                        })()}
                                                         style={{
                                                             width: '16px',
                                                             height: '16px',
-                                                            background: repair.assignedCrew < 5 ? '#ff8c00' : '#444',
+                                                            background: (() => {
+                                                                const newDroidCount = repair.assignedCrew + 1;
+                                                                const validation = validateDroidAssignment(repair.id, newDroidCount);
+                                                                return validation.valid ? '#ff8c00' : '#444';
+                                                            })(),
                                                             border: 'none',
                                                             borderRadius: '2px',
                                                             color: '#fff',
                                                             fontSize: '10px',
-                                                            cursor: repair.assignedCrew < 5 ? 'pointer' : 'not-allowed',
+                                                            cursor: (() => {
+                                                                const newDroidCount = repair.assignedCrew + 1;
+                                                                const validation = validateDroidAssignment(repair.id, newDroidCount);
+                                                                return validation.valid ? 'pointer' : 'not-allowed';
+                                                            })(),
                                                             display: 'flex',
                                                             alignItems: 'center',
                                                             justifyContent: 'center'

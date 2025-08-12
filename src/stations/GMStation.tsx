@@ -312,6 +312,17 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
   // Actuator image stream state
   const [actuatorImage, setActuatorImage] = useState<string>('');
 
+  // Local reactor output state for immediate UI feedback
+  const [localReactorOutput, setLocalReactorOutput] = useState<number>(85);
+
+  // Sync local reactor output with engineering station state
+  useEffect(() => {
+    const engineeringReactorOutput = currentGameState.engineering?.powerDistribution?.reactorOutput;
+    if (engineeringReactorOutput !== undefined && engineeringReactorOutput !== localReactorOutput) {
+      setLocalReactorOutput(engineeringReactorOutput);
+    }
+  }, [currentGameState.engineering?.powerDistribution?.reactorOutput]);
+
   // Add pilot state tracking for GM monitoring
   const [pilotState, setPilotState] = useState<PilotState>({
     heading: { x: 0, y: 0 },
@@ -2926,12 +2937,17 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <input
                     type="range"
                     min="0"
-                    max="120"
-                    value={currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}
+                    max="100"
+                    value={localReactorOutput}
                     onChange={(e) => {
                       const newOutput = parseInt(e.target.value);
+                      
+                      // Update local state immediately for responsive UI
+                      setLocalReactorOutput(newOutput);
+                      
                       // Send control command to Engineering
                       emit('set_reactor_output', newOutput, 'engineering');
+                      
                       // Update local state
                       setStates(prev => ({
                         ...prev,
@@ -2943,6 +2959,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                           }
                         }
                       }));
+                      
                       // Update parent component
                       if (onGMUpdate) {
                         onGMUpdate({
@@ -2958,15 +2975,313 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     }}
                     style={{
                       width: '100%',
-                      accentColor: (currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85) > 100 ? 'var(--gm-red)' : 'var(--gm-green)'
+                      accentColor: 'var(--gm-green)'
                     }}
                   />
-                  <span>{currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}%</span>
+                  <span>{localReactorOutput}%</span>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                  <EmitButton onClick={() => emit('set_reactor_output', 75, 'engineering')}>75% (Normal)</EmitButton>
-                  <EmitButton onClick={() => emit('set_reactor_output', 100, 'engineering')}>100% (Max)</EmitButton>
-                  <EmitRed onClick={() => emit('set_reactor_output', 110, 'engineering')}>110% (Overload)</EmitRed>
+                  <EmitButton onClick={() => {
+                    setLocalReactorOutput(75);
+                    emit('set_reactor_output', 75, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 75 }, 'engineering');
+                  }}>75% (Normal)</EmitButton>
+                  <EmitButton onClick={() => {
+                    setLocalReactorOutput(100);
+                    emit('set_reactor_output', 100, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 100 }, 'engineering');
+                  }}>100% (Max)</EmitButton>
+                  <EmitButton onClick={() => {
+                    setLocalReactorOutput(50);
+                    emit('set_reactor_output', 50, 'engineering');
+                    sendBroadcast('power_update', { reactorOutput: 50 }, 'engineering');
+                  }}>50% (Low Power)</EmitButton>
+                </div>
+
+                {/* Engineering System Damage Controls */}
+                <div style={{ 
+                  marginTop: 15, 
+                  padding: '8px', 
+                  background: 'rgba(255, 68, 68, 0.1)', 
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-red)'
+                }}>
+                  <div style={{ 
+                    fontSize: '0.9rem', 
+                    color: 'var(--gm-red)', 
+                    marginBottom: '8px', 
+                    fontWeight: 'bold' 
+                  }}>
+                    SYSTEM DAMAGE CONTROLS:
+                  </div>
+                  <div style={{ marginBottom: '8px' }}>
+                    <EmitButton onClick={() => {
+                      console.log('🧪 GM: Testing engineering connection...');
+                      console.log('🧪 GM: Socket connected:', socket?.connected);
+                      console.log('🧪 GM: Room:', roomRef.current);
+                      sendBroadcast('test_connection', { 
+                        message: 'Test from GM Station',
+                        timestamp: Date.now()
+                      }, 'engineering');
+                    }}>Test Connection</EmitButton>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                    <EmitRed onClick={() => {
+                      console.log('🔧 GM: Sending weapons damage command');
+                      sendBroadcast('system_damage', { 
+                        system: 'weapons', 
+                        damage: 25, 
+                        type: 'combat_damage' 
+                      }, 'engineering');
+                    }}>Damage Weapons</EmitRed>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'shields', 
+                        damage: 30, 
+                        type: 'overload' 
+                      }, 'engineering');
+                    }}>Damage Shields</EmitRed>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'engines', 
+                        damage: 20, 
+                        type: 'mechanical_failure' 
+                      }, 'engineering');
+                    }}>Damage Engines</EmitRed>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'lifeSupport', 
+                        damage: 35, 
+                        type: 'critical_failure' 
+                      }, 'engineering');
+                    }}>Damage Life Support</EmitRed>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'sensors', 
+                        damage: 30, 
+                        type: 'sensor_malfunction' 
+                      }, 'engineering');
+                    }}>Damage Sensors</EmitRed>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'communications', 
+                        damage: 25, 
+                        type: 'communication_failure' 
+                      }, 'engineering');
+                    }}>Damage Communications</EmitRed>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('system_repair', { 
+                        system: 'all', 
+                        amount: 50 
+                      }, 'engineering');
+                    }}>Repair All (+50%)</EmitButton>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('system_damage', { 
+                        system: 'all', 
+                        damage: 40, 
+                        type: 'cascade_failure' 
+                      }, 'engineering');
+                    }}>CASCADE FAILURE</EmitRed>
+                  </div>
+                </div>
+
+                {/* Engineering Emergency Controls */}
+                <div style={{ 
+                  marginTop: 15, 
+                  padding: '8px', 
+                  background: 'rgba(255, 170, 0, 0.1)', 
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-yellow)'
+                }}>
+                  <div style={{ 
+                    fontSize: '0.9rem', 
+                    color: 'var(--gm-yellow)', 
+                    marginBottom: '8px', 
+                    fontWeight: 'bold' 
+                  }}>
+                    EMERGENCY SCENARIOS:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('reactor_fluctuation', { 
+                        intensity: 30, 
+                        duration: 15 
+                      }, 'engineering');
+                    }}>Reactor Fluctuation</EmitButton>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('emergency_scenario', { 
+                        type: 'power_surge', 
+                        severity: 3 
+                      }, 'engineering');
+                    }}>Power Surge</EmitRed>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('system_malfunction', { 
+                        system: 'random', 
+                        duration: 30 
+                      }, 'engineering');
+                    }}>Random Malfunction</EmitButton>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('emergency_scenario', { 
+                        type: 'coolant_leak', 
+                        severity: 4 
+                      }, 'engineering');
+                    }}>Coolant Leak</EmitRed>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('emergency_scenario', { 
+                        type: 'reactor_overload', 
+                        severity: 5 
+                      }, 'engineering');
+                    }}>🚨 REACTOR OVERLOAD 🚨</EmitRed>
+                  </div>
+                </div>
+
+                {/* Droid Management Controls */}
+                <div style={{ 
+                  marginTop: 15, 
+                  padding: '8px', 
+                  background: 'rgba(255, 140, 0, 0.1)', 
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-yellow)'
+                }}>
+                  <div style={{ 
+                    fontSize: '0.9rem', 
+                    color: 'var(--gm-yellow)', 
+                    marginBottom: '8px', 
+                    fontWeight: 'bold' 
+                  }}>
+                    DROID MANAGEMENT:
+                  </div>
+                  <Row>
+                    <span>Available Droids:</span>
+                    <span style={{
+                      color: (states.engineering?.availableDroids ?? 20) < 10 ? 'var(--gm-red)' : 'var(--gm-green)'
+                    }}>
+                      {states.engineering?.availableDroids ?? 20}
+                    </span>
+                  </Row>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                    <input
+                      type="range"
+                      min="0"
+                      max="50"
+                      value={states.engineering?.availableDroids ?? 20}
+                      onChange={(e) => {
+                        const newDroidCount = parseInt(e.target.value);
+                        
+                        // Update local state
+                        setStates(prev => ({
+                          ...prev,
+                          engineering: {
+                            ...prev.engineering,
+                            availableDroids: newDroidCount
+                          }
+                        }));
+                        
+                        // Send to engineering station
+                        sendBroadcast('droid_allocation', { 
+                          availableDroids: newDroidCount 
+                        }, 'engineering');
+                      }}
+                      style={{
+                        width: '100%',
+                        accentColor: (states.engineering?.availableDroids ?? 20) < 10 ? 'var(--gm-red)' : 'var(--gm-yellow)'
+                      }}
+                    />
+                    <span>{states.engineering?.availableDroids ?? 20}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '8px' }}>
+                    <EmitButton onClick={() => {
+                      const newCount = 10;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { ...prev.engineering, availableDroids: newCount }
+                      }));
+                      sendBroadcast('droid_allocation', { availableDroids: newCount }, 'engineering');
+                    }}>10 (Limited)</EmitButton>
+                    <EmitButton onClick={() => {
+                      const newCount = 20;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { ...prev.engineering, availableDroids: newCount }
+                      }));
+                      sendBroadcast('droid_allocation', { availableDroids: newCount }, 'engineering');
+                    }}>20 (Normal)</EmitButton>
+                    <EmitButton onClick={() => {
+                      const newCount = 35;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { ...prev.engineering, availableDroids: newCount }
+                      }));
+                      sendBroadcast('droid_allocation', { availableDroids: newCount }, 'engineering');
+                    }}>35 (Enhanced)</EmitButton>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '6px' }}>
+                    <EmitRed onClick={() => {
+                      const newCount = 5;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { ...prev.engineering, availableDroids: newCount }
+                      }));
+                      sendBroadcast('droid_allocation', { availableDroids: newCount }, 'engineering');
+                    }}>5 (Critical)</EmitRed>
+                    <EmitRed onClick={() => {
+                      const newCount = 0;
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: { ...prev.engineering, availableDroids: newCount }
+                      }));
+                      sendBroadcast('droid_allocation', { availableDroids: newCount }, 'engineering');
+                    }}>0 (No Droids)</EmitRed>
+                  </div>
+                </div>
+
+                {/* Engineering Configuration Controls */}
+                <div style={{ 
+                  marginTop: 15, 
+                  padding: '8px', 
+                  background: 'rgba(0, 136, 255, 0.1)', 
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-blue)'
+                }}>
+                  <div style={{ 
+                    fontSize: '0.9rem', 
+                    color: 'var(--gm-blue)', 
+                    marginBottom: '8px', 
+                    fontWeight: 'bold' 
+                  }}>
+                    SYSTEM CONFIGURATION:
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('system_configuration', { 
+                        difficulty: 'easy',
+                        repairSpeed: 1.5,
+                        damageResistance: 1.2
+                      }, 'engineering');
+                    }}>Easy Mode</EmitButton>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('system_configuration', { 
+                        difficulty: 'hard',
+                        repairSpeed: 0.7,
+                        damageResistance: 0.8
+                      }, 'engineering');
+                    }}>Hard Mode</EmitButton>
+                    <EmitButton onClick={() => {
+                      sendBroadcast('random_event', { 
+                        enabled: true,
+                        frequency: 'medium'
+                      }, 'engineering');
+                    }}>Enable Random Events</EmitButton>
+                    <EmitRed onClick={() => {
+                      sendBroadcast('random_event', { 
+                        enabled: false
+                      }, 'engineering');
+                    }}>Disable Events</EmitRed>
+                  </div>
                 </div>
               </div>
 
