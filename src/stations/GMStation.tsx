@@ -459,9 +459,9 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
   /* Socket setup */
   useEffect(() => {
-    // Use relative connection for ngrok compatibility with proper configuration
-    console.log('🔧 GM Station connecting to current domain with enhanced config');
-    const s = io({
+    // Connect to the correct Socket.IO server port
+    console.log('🔧 GM Station connecting to Socket.IO server on port 3000');
+    const s = io('http://localhost:3000', {
       transports: ['websocket', 'polling'], // Try websocket first, fallback to polling
       timeout: 20000,
       reconnection: true,
@@ -689,6 +689,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
   const emit = (action: string, value?: any, station?: StationName) => {
     if (!socket) return;
     console.log(`📡 GM Station emitting player_action:`, { room: roomRef.current, action, value, target: station });
+    console.log(`📡 GM Station - Socket connected:`, socket.connected, 'Room:', roomRef.current);
     socket.emit('player_action', { room: roomRef.current, action, value, target: station });
   };
 
@@ -2896,6 +2897,266 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 <span>Emergency:</span>
                 <span>{states.engineering?.powerDistribution?.emergencyPower ? 'ON' : 'OFF'}</span>
               </Row>
+              
+              {/* Reactor Output Control */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                background: 'rgba(0, 0, 0, 0.4)', 
+                border: '1px solid var(--gm-blue)', 
+                borderRadius: '4px' 
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-yellow)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  REACTOR OUTPUT CONTROL:
+                </div>
+                <Row>
+                  <span>Current Output:</span>
+                  <span style={{
+                    color: (currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85) > 100 ? '#ff0040' : '#00ff00'
+                  }}>
+                    {currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}%
+                  </span>
+                </Row>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="120"
+                    value={currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}
+                    onChange={(e) => {
+                      const newOutput = parseInt(e.target.value);
+                      // Send control command to Engineering
+                      emit('set_reactor_output', newOutput, 'engineering');
+                      // Update local state
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            reactorOutput: newOutput
+                          }
+                        }
+                      }));
+                      // Update parent component
+                      if (onGMUpdate) {
+                        onGMUpdate({
+                          engineering: {
+                            ...currentGameState.engineering,
+                            powerDistribution: {
+                              ...currentGameState.engineering?.powerDistribution,
+                              reactorOutput: newOutput
+                            }
+                          }
+                        });
+                      }
+                    }}
+                    style={{
+                      width: '100%',
+                      accentColor: (currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85) > 100 ? 'var(--gm-red)' : 'var(--gm-green)'
+                    }}
+                  />
+                  <span>{currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}%</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '8px' }}>
+                  <EmitButton onClick={() => emit('set_reactor_output', 75, 'engineering')}>75% (Normal)</EmitButton>
+                  <EmitButton onClick={() => emit('set_reactor_output', 100, 'engineering')}>100% (Max)</EmitButton>
+                  <EmitRed onClick={() => emit('set_reactor_output', 110, 'engineering')}>110% (Overload)</EmitRed>
+                </div>
+              </div>
+
+              {/* Max Available Power Control */}
+              <div style={{ 
+                marginTop: 15, 
+                padding: '10px', 
+                background: 'rgba(0, 0, 0, 0.4)', 
+                border: '1px solid var(--gm-blue)', 
+                borderRadius: '4px' 
+              }}>
+                <div style={{ 
+                  fontSize: '0.9rem', 
+                  color: 'var(--gm-yellow)', 
+                  marginBottom: '8px', 
+                  fontWeight: 'bold' 
+                }}>
+                  MAX AVAILABLE POWER CONTROL:
+                </div>
+                <Row>
+                  <span>Max Available Power:</span>
+                  <span style={{ color: 'var(--gm-green)' }}>
+                    {states.engineering?.powerDistribution?.maxAvailable ?? 100}%
+                  </span>
+                </Row>
+                <div style={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px', 
+                  marginTop: '8px' 
+                }}>
+                  <EmitButton 
+                    onClick={() => {
+                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
+                      const newMax = Math.max(0, currentMax - 10);
+                      emit('set_max_power_output', newMax, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: newMax
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+                  >
+                    -10%
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
+                      const newMax = Math.max(0, currentMax - 25);
+                      emit('set_max_power_output', newMax, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: newMax
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+                  >
+                    -25%
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
+                      const newMax = Math.min(200, currentMax + 10);
+                      emit('set_max_power_output', newMax, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: newMax
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+                  >
+                    +10%
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      const currentMax = states.engineering?.powerDistribution?.maxAvailable ?? 100;
+                      const newMax = Math.min(200, currentMax + 25);
+                      emit('set_max_power_output', newMax, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: newMax
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+                  >
+                    +25%
+                  </EmitButton>
+                </div>
+                <div style={{ 
+                  display: 'flex', 
+                  gap: '8px', 
+                  marginTop: '8px' 
+                }}>
+                  <EmitButton 
+                    onClick={() => {
+                      emit('set_max_power_output', 50, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: 50
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'rgba(255, 136, 0, 0.1)', borderColor: '#ff8800', color: '#ff8800' }}
+                  >
+                    CRITICAL (50%)
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      emit('set_max_power_output', 100, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: 100
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px' }}
+                  >
+                    NORMAL (100%)
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      emit('set_max_power_output', 200, 'engineering');
+                      // Update GM's local state immediately
+                      setStates(prev => ({
+                        ...prev,
+                        engineering: {
+                          ...prev.engineering,
+                          powerDistribution: {
+                            ...prev.engineering?.powerDistribution,
+                            maxAvailable: 200
+                          }
+                        }
+                      }));
+                    }}
+                    style={{ fontSize: '0.7rem', padding: '4px 8px', background: 'rgba(255, 0, 0, 0.1)', borderColor: '#ff0000', color: '#ff0000' }}
+                  >
+                    OVERLOAD (200%)
+                  </EmitButton>
+                  <EmitButton 
+                    onClick={() => {
+                      console.log('🧪 GM Station: Testing connection to Engineering');
+                      emit('test_connection', { message: 'Hello Engineering!', timestamp: Date.now() }, 'engineering');
+                    }}
+                    style={{ fontSize: '0.6rem', padding: '2px 6px', background: 'rgba(0, 255, 255, 0.1)', borderColor: '#00ffff', color: '#00ffff' }}
+                  >
+                    TEST CONN
+                  </EmitButton>
+                </div>
+              </div>
+
               <div style={{ marginTop: 10 }}>
                 <EmitButton onClick={() => emit('toggle_emergency_power', true)}>
                   Emergency ON
