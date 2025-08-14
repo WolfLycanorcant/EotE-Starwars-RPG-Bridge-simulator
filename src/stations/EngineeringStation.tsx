@@ -140,12 +140,12 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             reactorOutput: 600,
             emergencyPower: false,
             powerAllocations: {
-                weapons: 100,
-                shields: 100,
-                engines: 100,
-                sensors: 100,
-                lifeSupport: 100,
-                communications: 100,
+                weapons: 80,
+                shields: 80,
+                engines: 80,
+                sensors: 80,
+                lifeSupport: 80,
+                communications: 80,
             },
         },
         systemStatus: {
@@ -936,48 +936,117 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     }, [engineeringState.activeBoosts]);
 
     // Emergency procedures implementation
-    const activateEmergencyShutdown = (systemName: string) => {
-        // Emergency shutdown for critically damaged systems
-        setEngineeringState(prev => {
-            const updatedSystemStatus = {
-                ...prev.systemStatus,
-                [systemName]: {
-                    ...prev.systemStatus[systemName],
-                    strain: 0, // Reset strain
-                    efficiency: 0 // System offline
-                }
-            };
+    const activateEmergencyShutdown = (systemName?: string) => {
+        if (systemName) {
+            // Individual system emergency shutdown (original functionality)
+            setEngineeringState(prev => {
+                const updatedSystemStatus = {
+                    ...prev.systemStatus,
+                    [systemName]: {
+                        ...prev.systemStatus[systemName],
+                        strain: 0, // Reset strain
+                        efficiency: 0 // System offline
+                    }
+                };
 
-            // Set power allocation to 0 for shutdown system
-            const updatedPowerAllocations = {
-                ...prev.powerDistribution.powerAllocations,
-                [systemName]: 0
-            };
+                // Set power allocation to 0 for shutdown system
+                const updatedPowerAllocations = {
+                    ...prev.powerDistribution.powerAllocations,
+                    [systemName]: 0
+                };
 
-            return {
-                ...prev,
-                systemStatus: updatedSystemStatus,
-                powerDistribution: {
-                    ...prev.powerDistribution,
-                    powerAllocations: updatedPowerAllocations
-                },
-                emergencyProcedures: {
-                    ...prev.emergencyProcedures,
-                    emergencyShutdownActive: true
-                }
-            };
-        });
-
-        // Emit emergency shutdown
-        if (socket) {
-            socket.emit('engineering_action', {
-                room: new URLSearchParams(window.location.search).get('room') || 'default',
-                type: 'emergency_shutdown',
-                system: systemName
+                return {
+                    ...prev,
+                    systemStatus: updatedSystemStatus,
+                    powerDistribution: {
+                        ...prev.powerDistribution,
+                        powerAllocations: updatedPowerAllocations
+                    },
+                    emergencyProcedures: {
+                        ...prev.emergencyProcedures,
+                        emergencyShutdownActive: true
+                    }
+                };
             });
-        }
 
-        console.log(`🚨 Emergency shutdown activated for ${systemName}`);
+            // Emit individual system emergency shutdown
+            if (socket) {
+                socket.emit('engineering_action', {
+                    room: new URLSearchParams(window.location.search).get('room') || 'default',
+                    type: 'emergency_shutdown',
+                    system: systemName
+                });
+            }
+
+            console.log(`🚨 Emergency shutdown activated for ${systemName}`);
+        } else {
+            // COMPLETE SHIP SHUTDOWN - All power cut except GM station
+            setEngineeringState(prev => {
+                // Set all power allocations to 0
+                const shutdownPowerAllocations = {
+                    weapons: 0,
+                    shields: 0,
+                    engines: 0,
+                    sensors: 0,
+                    lifeSupport: 0,
+                    communications: 0
+                };
+
+                // Set all systems to critical shutdown state
+                const shutdownSystemStatus: { [key: string]: SystemStatus } = {};
+                Object.keys(prev.systemStatus).forEach(system => {
+                    shutdownSystemStatus[system] = {
+                        health: 0,
+                        efficiency: 0,
+                        strain: 0,
+                        damaged: true,
+                        criticalDamage: true
+                    };
+                });
+
+                return {
+                    ...prev,
+                    powerDistribution: {
+                        ...prev.powerDistribution,
+                        reactorOutput: 0,
+                        totalPower: 0,
+                        emergencyPower: false,
+                        powerAllocations: shutdownPowerAllocations
+                    },
+                    systemStatus: shutdownSystemStatus,
+                    emergencyProcedures: {
+                        ...prev.emergencyProcedures,
+                        emergencyShutdownActive: true,
+                        emergencyPowerActive: false,
+                        lifeSupportPriority: false
+                    }
+                };
+            });
+
+            // Broadcast complete ship shutdown to all stations (except GM)
+            if (socket) {
+                socket.emit('engineering_action', {
+                    room: new URLSearchParams(window.location.search).get('room') || 'default',
+                    type: 'complete_ship_shutdown',
+                    message: 'EMERGENCY: Complete ship power shutdown initiated',
+                    timestamp: Date.now()
+                });
+
+                // Also send to GM station for awareness
+                socket.emit('gm_broadcast', {
+                    type: 'ship_emergency_shutdown',
+                    value: {
+                        message: 'COMPLETE SHIP POWER SHUTDOWN ACTIVATED',
+                        timestamp: Date.now(),
+                        source: 'engineering'
+                    },
+                    room: new URLSearchParams(window.location.search).get('room') || 'default',
+                    source: 'engineering'
+                });
+            }
+
+            console.log(`🚨🚨🚨 COMPLETE SHIP EMERGENCY SHUTDOWN ACTIVATED - ALL POWER CUT 🚨🚨🚨`);
+        }
     };
 
     const activateLifeSupportPriority = () => {
@@ -1399,7 +1468,18 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         console.log(`🎯 GM Event: System configuration update`, configData);
     };
 
-    const handleGMRandomEvent = (eventData: { type: string; description: string; effects: any }) => {
+    const handleGMRandomEvent = (eventData: any) => {
+        // Check if this is an enable/disable command
+        if (eventData.hasOwnProperty('enabled')) {
+            setRandomEventsEnabled(eventData.enabled);
+            console.log(`🎯 GM Command: Random events ${eventData.enabled ? 'ENABLED' : 'DISABLED'}`);
+            if (eventData.frequency) {
+                console.log(`🎯 GM Command: Random event frequency set to ${eventData.frequency}`);
+            }
+            return;
+        }
+
+        // Handle actual random events
         const { type, description, effects } = eventData;
 
         // Handle various random engineering events
@@ -1419,14 +1499,45 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 break;
 
             case 'power_fluctuation':
-                // Random power allocation changes
-                const randomSystem = Object.keys(engineeringState.powerDistribution.powerAllocations)[
-                    Math.floor(Math.random() * Object.keys(engineeringState.powerDistribution.powerAllocations).length)
-                ];
-                const fluctuation = (Math.random() - 0.5) * 10; // ±5 power units
-                updatePowerAllocation(randomSystem, Math.max(0, Math.min(50,
-                    engineeringState.powerDistribution.powerAllocations[randomSystem as keyof typeof engineeringState.powerDistribution.powerAllocations] + fluctuation
-                )));
+                // Reactor output fluctuation that affects total available power
+                const reactorFluctuation = Math.floor((Math.random() - 0.5) * 100); // ±50 reactor output units
+                const newReactorOutput = Math.max(200, Math.min(600,
+                    engineeringState.powerDistribution.reactorOutput + reactorFluctuation
+                ));
+
+                // Update engineering state reactor output
+                setEngineeringState(prev => ({
+                    ...prev,
+                    powerDistribution: {
+                        ...prev.powerDistribution,
+                        reactorOutput: newReactorOutput
+                    }
+                }));
+
+                // Broadcast reactor output change to GM station so the slider updates
+                if (socket) {
+                    socket.emit('engineering_action', {
+                        room: new URLSearchParams(window.location.search).get('room') || 'default',
+                        type: 'reactor_output_fluctuation',
+                        value: newReactorOutput,
+                        fluctuation: reactorFluctuation,
+                        cause: 'random_event'
+                    });
+
+                    // Also emit state update for GM monitoring
+                    emitStateUpdate({
+                        powerDistribution: {
+                            ...engineeringState.powerDistribution,
+                            reactorOutput: newReactorOutput
+                        },
+                        systemStatus: engineeringState.systemStatus,
+                        repairQueue: engineeringState.repairQueue,
+                        activeBoosts: engineeringState.activeBoosts,
+                        emergencyProcedures: engineeringState.emergencyProcedures
+                    });
+                }
+
+                console.log(`⚡ Power Fluctuation: Reactor output changed from ${engineeringState.powerDistribution.reactorOutput} to ${newReactorOutput} (${reactorFluctuation > 0 ? '+' : ''}${reactorFluctuation})`);
                 break;
 
             case 'system_glitch':
@@ -2047,8 +2158,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             return { valid: false, error: `Invalid power value for ${systemName}: must be a positive number` };
         }
 
-        if (value > 100) {
-            return { valid: false, error: `Power allocation for ${systemName} cannot exceed 100%` };
+        if (value > 150) {
+            return { valid: false, error: `Power allocation for ${systemName} cannot exceed 150%` };
         }
 
         // System-specific validation
@@ -2269,6 +2380,44 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 totalAllocated: Object.values(newAllocations).reduce((total, allocation) => total + allocation, 0),
                 efficiency: calculatePowerEfficiency(systemName, newValue) / newValue * 100
             }, 'update power allocation');
+
+            // Calculate and broadcast dice bonuses based on power level
+            const diceBonuses = [];
+            if (newValue >= 115) {
+                diceBonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
+            }
+            if (newValue >= 130) {
+                diceBonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
+            }
+            if (newValue >= 150) {
+                diceBonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
+            }
+
+            // Broadcast dice bonuses to GM station and other stations
+            if (diceBonuses.length > 0) {
+                safeSocketEmit('engineering_action', {
+                    room: new URLSearchParams(window.location.search).get('room') || 'default',
+                    type: 'system_dice_bonuses',
+                    system: systemName,
+                    powerLevel: newValue,
+                    bonuses: diceBonuses,
+                    timestamp: Date.now()
+                }, 'broadcast dice bonuses');
+
+                console.log(`🎲 System ${systemName} dice bonuses: ${diceBonuses.map(b => b.name).join(', ')} (${newValue}% power)`);
+            } else {
+                // Broadcast that system has no bonuses (below 115%)
+                safeSocketEmit('engineering_action', {
+                    room: new URLSearchParams(window.location.search).get('room') || 'default',
+                    type: 'system_dice_bonuses',
+                    system: systemName,
+                    powerLevel: newValue,
+                    bonuses: [],
+                    timestamp: Date.now()
+                }, 'clear dice bonuses');
+
+                console.log(`🎲 System ${systemName} has no dice bonuses (${newValue}% power, need 115%+)`);
+            }
 
             console.log(`⚡ Power allocation updated: ${systemName} = ${newValue}% (${effectivePower}% effective)`);
             return true;
@@ -3887,17 +4036,47 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                 {/* Emergency Shutdown */}
                                 <button
                                     onClick={() => {
-                                        const criticalSystems = Object.entries(engineeringState.systemStatus)
-                                            .filter(([, status]) => status.criticalDamage)
-                                            .map(([name]) => name);
+                                        // Provide options for different types of shutdown
+                                        const shutdownOptions = [
+                                            'Individual System Shutdown',
+                                            'COMPLETE SHIP SHUTDOWN',
+                                            'Cancel'
+                                        ];
 
-                                        if (criticalSystems.length > 0) {
-                                            const systemToShutdown = criticalSystems[0]; // Shutdown first critical system
-                                            if (window.confirm(`Emergency shutdown ${systemToShutdown}?\n\nThis will completely power down the system to prevent further damage.`)) {
-                                                activateEmergencyShutdown(systemToShutdown);
+                                        const choice = window.confirm(
+                                            '🚨 EMERGENCY SHUTDOWN OPTIONS 🚨\n\n' +
+                                            'Click OK for COMPLETE SHIP SHUTDOWN (cuts all power to all stations except GM)\n' +
+                                            'Click Cancel for Individual System Shutdown'
+                                        );
+
+                                        if (choice) {
+                                            // COMPLETE SHIP SHUTDOWN
+                                            if (window.confirm(
+                                                '⚠️⚠️⚠️ COMPLETE SHIP SHUTDOWN ⚠️⚠️⚠️\n\n' +
+                                                'This will:\n' +
+                                                '• Cut ALL power to the entire ship\n' +
+                                                '• Shut down ALL stations (except GM)\n' +
+                                                '• Set reactor output to 0%\n' +
+                                                '• Disable all ship systems\n\n' +
+                                                'This is an EXTREME emergency measure!\n\n' +
+                                                'Are you absolutely sure?'
+                                            )) {
+                                                activateEmergencyShutdown(); // No system name = complete shutdown
                                             }
                                         } else {
-                                            alert('No critical systems requiring emergency shutdown.');
+                                            // Individual system shutdown (original functionality)
+                                            const criticalSystems = Object.entries(engineeringState.systemStatus)
+                                                .filter(([, status]) => status.criticalDamage)
+                                                .map(([name]) => name);
+
+                                            if (criticalSystems.length > 0) {
+                                                const systemToShutdown = criticalSystems[0];
+                                                if (window.confirm(`Emergency shutdown ${systemToShutdown}?\n\nThis will completely power down the system to prevent further damage.`)) {
+                                                    activateEmergencyShutdown(systemToShutdown);
+                                                }
+                                            } else {
+                                                alert('No critical systems requiring emergency shutdown.');
+                                            }
                                         }
                                     }}
                                     style={{

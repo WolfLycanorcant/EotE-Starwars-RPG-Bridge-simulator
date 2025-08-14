@@ -315,6 +315,9 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
   // Local reactor output state for immediate UI feedback
   const [localReactorOutput, setLocalReactorOutput] = useState<number>(85);
 
+  // System dice bonuses state for real-time tracking
+  const [systemDiceBonuses, setSystemDiceBonuses] = useState<Record<string, { powerLevel: number; bonuses: any[] }>>({});
+
   // Sync local reactor output with engineering station state
   useEffect(() => {
     const engineeringReactorOutput = currentGameState.engineering?.powerDistribution?.reactorOutput;
@@ -322,6 +325,37 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
       setLocalReactorOutput(engineeringReactorOutput);
     }
   }, [currentGameState.engineering?.powerDistribution?.reactorOutput]);
+
+  // Initialize dice bonuses from current power allocations when engineering state changes
+  useEffect(() => {
+    const powerAllocations = currentGameState.engineering?.powerDistribution?.powerAllocations;
+    if (powerAllocations) {
+      const updatedBonuses: Record<string, { powerLevel: number; bonuses: any[] }> = {};
+
+      Object.entries(powerAllocations).forEach(([systemName, allocation]) => {
+        const bonuses = [];
+        if (allocation >= 115) {
+          bonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
+        }
+        if (allocation >= 130) {
+          bonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
+        }
+        if (allocation >= 150) {
+          bonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
+        }
+
+        if (bonuses.length > 0) {
+          updatedBonuses[systemName] = {
+            powerLevel: allocation,
+            bonuses: bonuses
+          };
+        }
+      });
+
+      setSystemDiceBonuses(updatedBonuses);
+      console.log('🎲 GM Station: Initialized dice bonuses from power allocations:', updatedBonuses);
+    }
+  }, [currentGameState.engineering?.powerDistribution?.powerAllocations]);
 
   // Add pilot state tracking for GM monitoring
   const [pilotState, setPilotState] = useState<PilotState>({
@@ -634,6 +668,12 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
           console.log('GM received composer protocol:', data.value);
           setComposerProtocol(data.value);
           break;
+        case 'ship_emergency_shutdown':
+          console.log('🚨🚨🚨 GM STATION: COMPLETE SHIP EMERGENCY SHUTDOWN DETECTED 🚨🚨🚨');
+          console.log('📢 GM Alert:', data.value.message);
+          // You could add visual alerts here for the GM
+          alert(`🚨 SHIP EMERGENCY SHUTDOWN 🚨\n\n${data.value.message}\n\nAll stations except GM have lost power!`);
+          break;
       }
     });
 
@@ -663,6 +703,33 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
       console.log('🖼️ GM Station received actuator frame, data length:', data.imageData.length);
       // Update the actuator image display
       setActuatorImage(data.imageData);
+    });
+
+    /* Listen for engineering actions including dice bonuses */
+    s.on('engineering_action', (data: { type: string; system?: string; powerLevel?: number; bonuses?: any[];[key: string]: any }) => {
+      console.log('🔧 GM Station received engineering action:', data);
+
+      if (data.type === 'system_dice_bonuses') {
+        console.log(`🎲 GM Station: System ${data.system} dice bonuses updated:`, data.bonuses);
+
+        // Update the systemDiceBonuses state for real-time display
+        if (data.system) {
+          setSystemDiceBonuses(prev => ({
+            ...prev,
+            [data.system!]: {
+              powerLevel: data.powerLevel || 0,
+              bonuses: data.bonuses || []
+            }
+          }));
+        }
+
+        // Log the bonus changes
+        if (data.bonuses && data.bonuses.length > 0) {
+          console.log(`🎲 ${data.system} (${data.powerLevel}%): ${data.bonuses.map((b: any) => b.name).join(', ')}`);
+        } else {
+          console.log(`🎲 ${data.system} (${data.powerLevel}%): No bonuses`);
+        }
+      }
     });
 
     /* Listen for game state updates to sync signal strength */
@@ -2908,20 +2975,95 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 <span>Emergency:</span>
                 <span>{states.engineering?.powerDistribution?.emergencyPower ? 'ON' : 'OFF'}</span>
               </Row>
-              
-              {/* Reactor Output Control */}
-              <div style={{ 
-                marginTop: 15, 
-                padding: '10px', 
-                background: 'rgba(0, 0, 0, 0.4)', 
-                border: '1px solid var(--gm-blue)', 
-                borderRadius: '4px' 
+
+              {/* Power-Based Dice Bonuses Display */}
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                background: 'rgba(0, 136, 255, 0.1)',
+                border: '1px solid var(--gm-blue)',
+                borderRadius: '4px'
               }}>
-                <div style={{ 
-                  fontSize: '0.9rem', 
-                  color: 'var(--gm-yellow)', 
-                  marginBottom: '8px', 
-                  fontWeight: 'bold' 
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-blue)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
+                }}>
+                  SYSTEM DICE BONUSES:
+                </div>
+                {(() => {
+                  // Use real-time dice bonus data from Engineering Station broadcasts
+                  const systemsWithBonuses = Object.entries(systemDiceBonuses)
+                    .filter(([, data]) => data.bonuses.length > 0);
+
+                  if (systemsWithBonuses.length === 0) {
+                    return (
+                      <div style={{ fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
+                        No systems have power bonuses (115%+ required)
+                      </div>
+                    );
+                  }
+
+                  return systemsWithBonuses.map(([systemName, data]) => (
+                    <div key={systemName} style={{ marginBottom: '6px' }}>
+                      <Row>
+                        <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
+                          {systemName}:
+                        </span>
+                        <span style={{ color: '#ffd700' }}>{data.powerLevel}%</span>
+                      </Row>
+                      <div style={{
+                        marginLeft: '10px',
+                        fontSize: '0.7rem',
+                        display: 'flex',
+                        gap: '8px',
+                        flexWrap: 'wrap'
+                      }}>
+                        {data.bonuses.map((bonus, index) => (
+                          <span
+                            key={index}
+                            style={{
+                              color: bonus.color,
+                              backgroundColor: `${bonus.color}20`,
+                              padding: '2px 6px',
+                              borderRadius: '3px',
+                              border: `1px solid ${bonus.color}`,
+                              fontSize: '0.65rem',
+                              fontWeight: 'bold'
+                            }}
+                          >
+                            {bonus.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
+                <div style={{
+                  marginTop: '8px',
+                  fontSize: '0.65rem',
+                  color: '#888',
+                  borderTop: '1px solid #333',
+                  paddingTop: '6px'
+                }}>
+                  115%+ = Blue Boost | 130%+ = Green Die | 150% = Green→Yellow
+                </div>
+              </div>
+
+              {/* Reactor Output Control */}
+              <div style={{
+                marginTop: 15,
+                padding: '10px',
+                background: 'rgba(0, 0, 0, 0.4)',
+                border: '1px solid var(--gm-blue)',
+                borderRadius: '4px'
+              }}>
+                <div style={{
+                  fontSize: '0.9rem',
+                  color: 'var(--gm-yellow)',
+                  marginBottom: '8px',
+                  fontWeight: 'bold'
                 }}>
                   REACTOR OUTPUT CONTROL:
                 </div>
@@ -2941,13 +3083,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     value={localReactorOutput}
                     onChange={(e) => {
                       const newOutput = parseInt(e.target.value);
-                      
+
                       // Update local state immediately for responsive UI
                       setLocalReactorOutput(newOutput);
-                      
+
                       // Send control command to Engineering
                       emit('set_reactor_output', newOutput, 'engineering');
-                      
+
                       // Update local state
                       setStates(prev => ({
                         ...prev,
@@ -2959,7 +3101,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                           }
                         }
                       }));
-                      
+
                       // Update parent component
                       if (onGMUpdate) {
                         onGMUpdate({
@@ -2999,18 +3141,18 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
 
                 {/* Engineering System Damage Controls */}
-                <div style={{ 
-                  marginTop: 15, 
-                  padding: '8px', 
-                  background: 'rgba(255, 68, 68, 0.1)', 
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(255, 68, 68, 0.1)',
                   borderRadius: '4px',
                   border: '1px solid var(--gm-red)'
                 }}>
-                  <div style={{ 
-                    fontSize: '0.9rem', 
-                    color: 'var(--gm-red)', 
-                    marginBottom: '8px', 
-                    fontWeight: 'bold' 
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-red)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
                   }}>
                     SYSTEM DAMAGE CONTROLS:
                   </div>
@@ -3019,7 +3161,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       console.log('🧪 GM: Testing engineering connection...');
                       console.log('🧪 GM: Socket connected:', socket?.connected);
                       console.log('🧪 GM: Room:', roomRef.current);
-                      sendBroadcast('test_connection', { 
+                      sendBroadcast('test_connection', {
                         message: 'Test from GM Station',
                         timestamp: Date.now()
                       }, 'engineering');
@@ -3028,130 +3170,130 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                     <EmitRed onClick={() => {
                       console.log('🔧 GM: Sending weapons damage command');
-                      sendBroadcast('system_damage', { 
-                        system: 'weapons', 
-                        damage: 5, 
-                        type: 'combat_damage' 
+                      sendBroadcast('system_damage', {
+                        system: 'weapons',
+                        damage: 5,
+                        type: 'combat_damage'
                       }, 'engineering');
                     }}>Damage Weapons</EmitRed>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'shields', 
-                        damage: 5, 
-                        type: 'overload' 
+                      sendBroadcast('system_damage', {
+                        system: 'shields',
+                        damage: 5,
+                        type: 'overload'
                       }, 'engineering');
                     }}>Damage Shields</EmitRed>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'engines', 
-                        damage: 5, 
-                        type: 'mechanical_failure' 
+                      sendBroadcast('system_damage', {
+                        system: 'engines',
+                        damage: 5,
+                        type: 'mechanical_failure'
                       }, 'engineering');
                     }}>Damage Engines</EmitRed>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'lifeSupport', 
-                        damage: 5, 
-                        type: 'critical_failure' 
+                      sendBroadcast('system_damage', {
+                        system: 'lifeSupport',
+                        damage: 5,
+                        type: 'critical_failure'
                       }, 'engineering');
                     }}>Damage Life Support</EmitRed>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'sensors', 
-                        damage: 5, 
-                        type: 'sensor_malfunction' 
+                      sendBroadcast('system_damage', {
+                        system: 'sensors',
+                        damage: 5,
+                        type: 'sensor_malfunction'
                       }, 'engineering');
                     }}>Damage Sensors</EmitRed>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'communications', 
-                        damage: 5, 
-                        type: 'communication_failure' 
+                      sendBroadcast('system_damage', {
+                        system: 'communications',
+                        damage: 5,
+                        type: 'communication_failure'
                       }, 'engineering');
                     }}>Damage Communications</EmitRed>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     <EmitButton onClick={() => {
-                      sendBroadcast('system_repair', { 
-                        system: 'all', 
-                        amount: 50 
+                      sendBroadcast('system_repair', {
+                        system: 'all',
+                        amount: 50
                       }, 'engineering');
                     }}>Repair All (+50%)</EmitButton>
                     <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', { 
-                        system: 'all', 
-                        damage: 40, 
-                        type: 'cascade_failure' 
+                      sendBroadcast('system_damage', {
+                        system: 'all',
+                        damage: 40,
+                        type: 'cascade_failure'
                       }, 'engineering');
                     }}>CASCADE FAILURE</EmitRed>
                   </div>
                 </div>
 
                 {/* Engineering Emergency Controls */}
-                <div style={{ 
-                  marginTop: 15, 
-                  padding: '8px', 
-                  background: 'rgba(255, 170, 0, 0.1)', 
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(255, 170, 0, 0.1)',
                   borderRadius: '4px',
                   border: '1px solid var(--gm-yellow)'
                 }}>
-                  <div style={{ 
-                    fontSize: '0.9rem', 
-                    color: 'var(--gm-yellow)', 
-                    marginBottom: '8px', 
-                    fontWeight: 'bold' 
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-yellow)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
                   }}>
                     EMERGENCY SCENARIOS:
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
                     <EmitButton onClick={() => {
-                      sendBroadcast('reactor_fluctuation', { 
-                        intensity: 30, 
-                        duration: 15 
+                      sendBroadcast('reactor_fluctuation', {
+                        intensity: 30,
+                        duration: 15
                       }, 'engineering');
                     }}>Reactor Fluctuation</EmitButton>
                     <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', { 
-                        type: 'power_surge', 
-                        severity: 3 
+                      sendBroadcast('emergency_scenario', {
+                        type: 'power_surge',
+                        severity: 3
                       }, 'engineering');
                     }}>Power Surge</EmitRed>
                     <EmitButton onClick={() => {
-                      sendBroadcast('system_malfunction', { 
-                        system: 'random', 
-                        duration: 30 
+                      sendBroadcast('system_malfunction', {
+                        system: 'random',
+                        duration: 30
                       }, 'engineering');
                     }}>Random Malfunction</EmitButton>
                     <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', { 
-                        type: 'coolant_leak', 
-                        severity: 4 
+                      sendBroadcast('emergency_scenario', {
+                        type: 'coolant_leak',
+                        severity: 4
                       }, 'engineering');
                     }}>Coolant Leak</EmitRed>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
                     <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', { 
-                        type: 'reactor_overload', 
-                        severity: 5 
+                      sendBroadcast('emergency_scenario', {
+                        type: 'reactor_overload',
+                        severity: 5
                       }, 'engineering');
                     }}>🚨 REACTOR OVERLOAD 🚨</EmitRed>
                   </div>
                 </div>
 
                 {/* Droid Management Controls */}
-                <div style={{ 
-                  marginTop: 15, 
-                  padding: '8px', 
-                  background: 'rgba(255, 140, 0, 0.1)', 
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(255, 140, 0, 0.1)',
                   borderRadius: '4px',
                   border: '1px solid var(--gm-yellow)'
                 }}>
-                  <div style={{ 
-                    fontSize: '0.9rem', 
-                    color: 'var(--gm-yellow)', 
-                    marginBottom: '8px', 
-                    fontWeight: 'bold' 
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-yellow)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
                   }}>
                     DROID MANAGEMENT:
                   </div>
@@ -3171,7 +3313,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       value={states.engineering?.availableDroids ?? 20}
                       onChange={(e) => {
                         const newDroidCount = parseInt(e.target.value);
-                        
+
                         // Update local state
                         setStates(prev => ({
                           ...prev,
@@ -3180,10 +3322,10 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                             availableDroids: newDroidCount
                           }
                         }));
-                        
+
                         // Send to engineering station
-                        sendBroadcast('droid_allocation', { 
-                          availableDroids: newDroidCount 
+                        sendBroadcast('droid_allocation', {
+                          availableDroids: newDroidCount
                         }, 'engineering');
                       }}
                       style={{
@@ -3240,26 +3382,26 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
 
                 {/* Ship Strain Controls */}
-                <div style={{ 
-                  marginTop: 15, 
-                  padding: '8px', 
-                  background: 'rgba(255, 68, 68, 0.1)', 
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(255, 68, 68, 0.1)',
                   borderRadius: '4px',
                   border: '1px solid var(--gm-red)'
                 }}>
-                  <div style={{ 
-                    fontSize: '0.9rem', 
-                    color: 'var(--gm-red)', 
-                    marginBottom: '8px', 
-                    fontWeight: 'bold' 
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-red)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
                   }}>
                     SHIP STRAIN CONTROLS:
                   </div>
                   <Row>
                     <span>Current Strain:</span>
                     <span style={{
-                      color: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' : 
-                             (states.engineering?.shipStrain?.current ?? 0) > 40 ? 'var(--gm-yellow)' : 'var(--gm-green)'
+                      color: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' :
+                        (states.engineering?.shipStrain?.current ?? 0) > 40 ? 'var(--gm-yellow)' : 'var(--gm-green)'
                     }}>
                       {states.engineering?.shipStrain?.current ?? 0}
                     </span>
@@ -3270,7 +3412,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       {states.engineering?.shipStrain?.maximum ?? 100}
                     </span>
                   </Row>
-                  
+
                   {/* Current Strain Slider */}
                   <div style={{ marginTop: '8px', marginBottom: '8px' }}>
                     <div style={{ fontSize: '0.8rem', marginBottom: '4px', color: 'var(--gm-red)' }}>
@@ -3284,7 +3426,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                         value={states.engineering?.shipStrain?.current ?? 0}
                         onChange={(e) => {
                           const newStrain = parseInt(e.target.value);
-                          
+
                           // Update local state
                           setStates(prev => ({
                             ...prev,
@@ -3297,9 +3439,9 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                               }
                             }
                           }));
-                          
+
                           // Send to engineering station
-                          sendBroadcast('ship_strain_update', { 
+                          sendBroadcast('ship_strain_update', {
                             current: newStrain,
                             maximum: states.engineering?.shipStrain?.maximum ?? 100
                           }, 'engineering');
@@ -3328,7 +3470,7 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                         value={states.engineering?.shipStrain?.maximum ?? 100}
                         onChange={(e) => {
                           const newMaxStrain = parseInt(e.target.value);
-                          
+
                           // Update local state
                           setStates(prev => ({
                             ...prev,
@@ -3340,9 +3482,9 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                               }
                             }
                           }));
-                          
+
                           // Send to engineering station
-                          sendBroadcast('ship_strain_update', { 
+                          sendBroadcast('ship_strain_update', {
                             current: Math.min(states.engineering?.shipStrain?.current ?? 0, newMaxStrain),
                             maximum: newMaxStrain
                           }, 'engineering');
@@ -3364,16 +3506,16 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       const newStrain = 0;
                       setStates(prev => ({
                         ...prev,
-                        engineering: { 
-                          ...prev.engineering, 
-                          shipStrain: { 
+                        engineering: {
+                          ...prev.engineering,
+                          shipStrain: {
                             ...prev.engineering?.shipStrain,
                             current: newStrain,
                             maximum: prev.engineering?.shipStrain?.maximum ?? 100
                           }
                         }
                       }));
-                      sendBroadcast('ship_strain_update', { 
+                      sendBroadcast('ship_strain_update', {
                         current: newStrain,
                         maximum: states.engineering?.shipStrain?.maximum ?? 100
                       }, 'engineering');
@@ -3382,16 +3524,16 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       const newStrain = 50;
                       setStates(prev => ({
                         ...prev,
-                        engineering: { 
-                          ...prev.engineering, 
-                          shipStrain: { 
+                        engineering: {
+                          ...prev.engineering,
+                          shipStrain: {
                             ...prev.engineering?.shipStrain,
                             current: newStrain,
                             maximum: prev.engineering?.shipStrain?.maximum ?? 100
                           }
                         }
                       }));
-                      sendBroadcast('ship_strain_update', { 
+                      sendBroadcast('ship_strain_update', {
                         current: newStrain,
                         maximum: states.engineering?.shipStrain?.maximum ?? 100
                       }, 'engineering');
@@ -3400,16 +3542,16 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                       const newStrain = 90;
                       setStates(prev => ({
                         ...prev,
-                        engineering: { 
-                          ...prev.engineering, 
-                          shipStrain: { 
+                        engineering: {
+                          ...prev.engineering,
+                          shipStrain: {
                             ...prev.engineering?.shipStrain,
                             current: newStrain,
                             maximum: prev.engineering?.shipStrain?.maximum ?? 100
                           }
                         }
                       }));
-                      sendBroadcast('ship_strain_update', { 
+                      sendBroadcast('ship_strain_update', {
                         current: newStrain,
                         maximum: states.engineering?.shipStrain?.maximum ?? 100
                       }, 'engineering');
@@ -3418,44 +3560,44 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 </div>
 
                 {/* Engineering Configuration Controls */}
-                <div style={{ 
-                  marginTop: 15, 
-                  padding: '8px', 
-                  background: 'rgba(0, 136, 255, 0.1)', 
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(0, 136, 255, 0.1)',
                   borderRadius: '4px',
                   border: '1px solid var(--gm-blue)'
                 }}>
-                  <div style={{ 
-                    fontSize: '0.9rem', 
-                    color: 'var(--gm-blue)', 
-                    marginBottom: '8px', 
-                    fontWeight: 'bold' 
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-blue)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
                   }}>
                     SYSTEM CONFIGURATION:
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
                     <EmitButton onClick={() => {
-                      sendBroadcast('system_configuration', { 
+                      sendBroadcast('system_configuration', {
                         difficulty: 'easy',
                         repairSpeed: 1.5,
                         damageResistance: 1.2
                       }, 'engineering');
                     }}>Easy Mode</EmitButton>
                     <EmitButton onClick={() => {
-                      sendBroadcast('system_configuration', { 
+                      sendBroadcast('system_configuration', {
                         difficulty: 'hard',
                         repairSpeed: 0.7,
                         damageResistance: 0.8
                       }, 'engineering');
                     }}>Hard Mode</EmitButton>
                     <EmitButton onClick={() => {
-                      sendBroadcast('random_event', { 
+                      sendBroadcast('random_event', {
                         enabled: true,
                         frequency: 'medium'
                       }, 'engineering');
                     }}>Enable Random Events</EmitButton>
                     <EmitRed onClick={() => {
-                      sendBroadcast('random_event', { 
+                      sendBroadcast('random_event', {
                         enabled: false
                       }, 'engineering');
                     }}>Disable Events</EmitRed>
