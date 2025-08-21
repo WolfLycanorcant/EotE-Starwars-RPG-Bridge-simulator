@@ -334,21 +334,25 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
 
       Object.entries(powerAllocations).forEach(([systemName, allocation]) => {
         const bonuses = [];
-        if (allocation >= 115) {
-          bonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
-        }
-        if (allocation >= 130) {
-          bonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
-        }
-        if (allocation >= 150) {
-          bonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
-        }
+        // Ensure allocation is a number before comparison
+        const allocNum = typeof allocation === 'number' ? allocation : Number(allocation);
+        if (!isNaN(allocNum)) {
+          if (allocNum >= 115) {
+            bonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
+          }
+          if (allocNum >= 130) {
+            bonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
+          }
+          if (allocNum >= 150) {
+            bonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
+          }
 
-        if (bonuses.length > 0) {
-          updatedBonuses[systemName] = {
-            powerLevel: allocation,
-            bonuses: bonuses
-          };
+          if (bonuses.length > 0) {
+            updatedBonuses[systemName] = {
+              powerLevel: allocNum,
+              bonuses: bonuses
+            };
+          }
         }
       });
 
