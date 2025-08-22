@@ -46,7 +46,9 @@ const initialGlobalState: GlobalGameState = {
   communications: null,
   navigation: null,
   weapons: null,
-  engineering: null,
+  engineering: {
+    availableDroids: 3
+  },
 };
 
 // Add pilot state interface for GM monitoring - matches Navigation Station
@@ -312,54 +314,23 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
   // Actuator image stream state
   const [actuatorImage, setActuatorImage] = useState<string>('');
 
-  // Local reactor output state for immediate UI feedback
-  const [localReactorOutput, setLocalReactorOutput] = useState<number>(85);
+  // Power allocation state for synchronization with Engineering Station
+  const [powerAllocations, setPowerAllocations] = useState({
+    weapons: 100,
+    shields: 100,
+    engines: 100,
+    sensors: 100,
+    lifeSupport: 100,
+    communications: 100,
+  });
 
-  // System dice bonuses state for real-time tracking
-  const [systemDiceBonuses, setSystemDiceBonuses] = useState<Record<string, { powerLevel: number; bonuses: any[] }>>({});
 
-  // Sync local reactor output with engineering station state
-  useEffect(() => {
-    const engineeringReactorOutput = currentGameState.engineering?.powerDistribution?.reactorOutput;
-    if (engineeringReactorOutput !== undefined && engineeringReactorOutput !== localReactorOutput) {
-      setLocalReactorOutput(engineeringReactorOutput);
-    }
-  }, [currentGameState.engineering?.powerDistribution?.reactorOutput]);
 
-  // Initialize dice bonuses from current power allocations when engineering state changes
-  useEffect(() => {
-    const powerAllocations = currentGameState.engineering?.powerDistribution?.powerAllocations;
-    if (powerAllocations) {
-      const updatedBonuses: Record<string, { powerLevel: number; bonuses: any[] }> = {};
 
-      Object.entries(powerAllocations).forEach(([systemName, allocation]) => {
-        const bonuses = [];
-        // Ensure allocation is a number before comparison
-        const allocNum = typeof allocation === 'number' ? allocation : Number(allocation);
-        if (!isNaN(allocNum)) {
-          if (allocNum >= 115) {
-            bonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
-          }
-          if (allocNum >= 130) {
-            bonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
-          }
-          if (allocNum >= 150) {
-            bonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
-          }
 
-          if (bonuses.length > 0) {
-            updatedBonuses[systemName] = {
-              powerLevel: allocNum,
-              bonuses: bonuses
-            };
-          }
-        }
-      });
 
-      setSystemDiceBonuses(updatedBonuses);
-      console.log('🎲 GM Station: Initialized dice bonuses from power allocations:', updatedBonuses);
-    }
-  }, [currentGameState.engineering?.powerDistribution?.powerAllocations]);
+
+
 
   // Add pilot state tracking for GM monitoring
   const [pilotState, setPilotState] = useState<PilotState>({
@@ -700,6 +671,12 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
           }
         }));
       }
+      
+      // Track engineering power allocations for GM synchronization
+      if (payload.station === 'engineering' && payload.state.powerDistribution?.powerAllocations) {
+        console.log('🔌 GM Station: Syncing power allocations from Engineering Station:', payload.state.powerDistribution.powerAllocations);
+        setPowerAllocations(payload.state.powerDistribution.powerAllocations);
+      }
     });
 
     /* Listen for actuator canvas stream from Navigation Station */
@@ -709,30 +686,32 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
       setActuatorImage(data.imageData);
     });
 
-    /* Listen for engineering actions including dice bonuses */
-    s.on('engineering_action', (data: { type: string; system?: string; powerLevel?: number; bonuses?: any[];[key: string]: any }) => {
+    /* Listen for engineering actions */
+    s.on('engineering_action', (data: { type: string; [key: string]: any }) => {
       console.log('🔧 GM Station received engineering action:', data);
-
-      if (data.type === 'system_dice_bonuses') {
-        console.log(`🎲 GM Station: System ${data.system} dice bonuses updated:`, data.bonuses);
-
-        // Update the systemDiceBonuses state for real-time display
-        if (data.system) {
-          setSystemDiceBonuses(prev => ({
-            ...prev,
-            [data.system!]: {
-              powerLevel: data.powerLevel || 0,
-              bonuses: data.bonuses || []
+      
+      // Handle power allocation changes from Engineering Station
+      if (data.type === 'power_allocation_change') {
+        console.log(`🔌 GM Station: Engineering changed ${data.system} power to ${data.value} units`);
+        setPowerAllocations(prev => ({
+          ...prev,
+          [data.system]: data.value
+        }));
+        
+        // Also update the states.engineering for consistency
+        setStates(prev => ({
+          ...prev,
+          engineering: {
+            ...prev.engineering,
+            powerDistribution: {
+              ...prev.engineering?.powerDistribution,
+              powerAllocations: {
+                ...prev.engineering?.powerDistribution?.powerAllocations,
+                [data.system]: data.value
+              }
             }
-          }));
-        }
-
-        // Log the bonus changes
-        if (data.bonuses && data.bonuses.length > 0) {
-          console.log(`🎲 ${data.system} (${data.powerLevel}%): ${data.bonuses.map((b: any) => b.name).join(', ')}`);
-        } else {
-          console.log(`🎲 ${data.system} (${data.powerLevel}%): No bonuses`);
-        }
+          }
+        }));
       }
     });
 
@@ -2980,310 +2959,13 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                 <span>{states.engineering?.powerDistribution?.emergencyPower ? 'ON' : 'OFF'}</span>
               </Row>
 
-              {/* Power-Based Dice Bonuses Display */}
-              <div style={{
-                marginTop: 15,
-                padding: '10px',
-                background: 'rgba(0, 136, 255, 0.1)',
-                border: '1px solid var(--gm-blue)',
-                borderRadius: '4px'
-              }}>
-                <div style={{
-                  fontSize: '0.9rem',
-                  color: 'var(--gm-blue)',
-                  marginBottom: '8px',
-                  fontWeight: 'bold'
-                }}>
-                  SYSTEM DICE BONUSES:
-                </div>
-                {(() => {
-                  // Use real-time dice bonus data from Engineering Station broadcasts
-                  const systemsWithBonuses = Object.entries(systemDiceBonuses)
-                    .filter(([, data]) => data.bonuses.length > 0);
 
-                  if (systemsWithBonuses.length === 0) {
-                    return (
-                      <div style={{ fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
-                        No systems have power bonuses (115%+ required)
-                      </div>
-                    );
-                  }
 
-                  return systemsWithBonuses.map(([systemName, data]) => (
-                    <div key={systemName} style={{ marginBottom: '6px' }}>
-                      <Row>
-                        <span style={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
-                          {systemName}:
-                        </span>
-                        <span style={{ color: '#ffd700' }}>{data.powerLevel}%</span>
-                      </Row>
-                      <div style={{
-                        marginLeft: '10px',
-                        fontSize: '0.7rem',
-                        display: 'flex',
-                        gap: '8px',
-                        flexWrap: 'wrap'
-                      }}>
-                        {data.bonuses.map((bonus, index) => (
-                          <span
-                            key={index}
-                            style={{
-                              color: bonus.color,
-                              backgroundColor: `${bonus.color}20`,
-                              padding: '2px 6px',
-                              borderRadius: '3px',
-                              border: `1px solid ${bonus.color}`,
-                              fontSize: '0.65rem',
-                              fontWeight: 'bold'
-                            }}
-                          >
-                            {bonus.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ));
-                })()}
-                <div style={{
-                  marginTop: '8px',
-                  fontSize: '0.65rem',
-                  color: '#888',
-                  borderTop: '1px solid #333',
-                  paddingTop: '6px'
-                }}>
-                  115%+ = Blue Boost | 130%+ = Green Die | 150% = Green→Yellow
-                </div>
-              </div>
 
-              {/* Reactor Output Control */}
-              <div style={{
-                marginTop: 15,
-                padding: '10px',
-                background: 'rgba(0, 0, 0, 0.4)',
-                border: '1px solid var(--gm-blue)',
-                borderRadius: '4px'
-              }}>
-                <div style={{
-                  fontSize: '0.9rem',
-                  color: 'var(--gm-yellow)',
-                  marginBottom: '8px',
-                  fontWeight: 'bold'
-                }}>
-                  REACTOR OUTPUT CONTROL:
-                </div>
-                <Row>
-                  <span>Current Output:</span>
-                  <span style={{
-                    color: (currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85) > 100 ? '#ff0040' : '#00ff00'
-                  }}>
-                    {currentGameState.engineering?.powerDistribution?.reactorOutput ?? 85}%
-                  </span>
-                </Row>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                  <input
-                    type="range"
-                    min="0"
-                    max="600"
-                    value={localReactorOutput}
-                    onChange={(e) => {
-                      const newOutput = parseInt(e.target.value);
 
-                      // Update local state immediately for responsive UI
-                      setLocalReactorOutput(newOutput);
 
-                      // Send control command to Engineering
-                      emit('set_reactor_output', newOutput, 'engineering');
 
-                      // Update local state
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          powerDistribution: {
-                            ...prev.engineering?.powerDistribution,
-                            reactorOutput: newOutput
-                          }
-                        }
-                      }));
 
-                      // Update parent component
-                      if (onGMUpdate) {
-                        onGMUpdate({
-                          engineering: {
-                            ...currentGameState.engineering,
-                            powerDistribution: {
-                              ...currentGameState.engineering?.powerDistribution,
-                              reactorOutput: newOutput
-                            }
-                          }
-                        });
-                      }
-                    }}
-                    style={{
-                      width: '100%',
-                      accentColor: 'var(--gm-green)'
-                    }}
-                  />
-                  <span>{localReactorOutput}</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginTop: '8px' }}>
-                  <EmitButton onClick={() => {
-                    setLocalReactorOutput(450);
-                    emit('set_reactor_output', 450, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 450 }, 'engineering');
-                  }}>450 (Normal)</EmitButton>
-                  <EmitButton onClick={() => {
-                    setLocalReactorOutput(600);
-                    emit('set_reactor_output', 600, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 600 }, 'engineering');
-                  }}>600 (Max)</EmitButton>
-                  <EmitButton onClick={() => {
-                    setLocalReactorOutput(300);
-                    emit('set_reactor_output', 300, 'engineering');
-                    sendBroadcast('power_update', { reactorOutput: 300 }, 'engineering');
-                  }}>300 (Low Power)</EmitButton>
-                </div>
-
-                {/* Engineering System Damage Controls */}
-                <div style={{
-                  marginTop: 15,
-                  padding: '8px',
-                  background: 'rgba(255, 68, 68, 0.1)',
-                  borderRadius: '4px',
-                  border: '1px solid var(--gm-red)'
-                }}>
-                  <div style={{
-                    fontSize: '0.9rem',
-                    color: 'var(--gm-red)',
-                    marginBottom: '8px',
-                    fontWeight: 'bold'
-                  }}>
-                    SYSTEM DAMAGE CONTROLS:
-                  </div>
-                  <div style={{ marginBottom: '8px' }}>
-                    <EmitButton onClick={() => {
-                      console.log('🧪 GM: Testing engineering connection...');
-                      console.log('🧪 GM: Socket connected:', socket?.connected);
-                      console.log('🧪 GM: Room:', roomRef.current);
-                      sendBroadcast('test_connection', {
-                        message: 'Test from GM Station',
-                        timestamp: Date.now()
-                      }, 'engineering');
-                    }}>Test Connection</EmitButton>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                    <EmitRed onClick={() => {
-                      console.log('🔧 GM: Sending weapons damage command');
-                      sendBroadcast('system_damage', {
-                        system: 'weapons',
-                        damage: 5,
-                        type: 'combat_damage'
-                      }, 'engineering');
-                    }}>Damage Weapons</EmitRed>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'shields',
-                        damage: 5,
-                        type: 'overload'
-                      }, 'engineering');
-                    }}>Damage Shields</EmitRed>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'engines',
-                        damage: 5,
-                        type: 'mechanical_failure'
-                      }, 'engineering');
-                    }}>Damage Engines</EmitRed>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'lifeSupport',
-                        damage: 5,
-                        type: 'critical_failure'
-                      }, 'engineering');
-                    }}>Damage Life Support</EmitRed>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'sensors',
-                        damage: 5,
-                        type: 'sensor_malfunction'
-                      }, 'engineering');
-                    }}>Damage Sensors</EmitRed>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'communications',
-                        damage: 5,
-                        type: 'communication_failure'
-                      }, 'engineering');
-                    }}>Damage Communications</EmitRed>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('system_repair', {
-                        system: 'all',
-                        amount: 50
-                      }, 'engineering');
-                    }}>Repair All (+50%)</EmitButton>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('system_damage', {
-                        system: 'all',
-                        damage: 40,
-                        type: 'cascade_failure'
-                      }, 'engineering');
-                    }}>CASCADE FAILURE</EmitRed>
-                  </div>
-                </div>
-
-                {/* Engineering Emergency Controls */}
-                <div style={{
-                  marginTop: 15,
-                  padding: '8px',
-                  background: 'rgba(255, 170, 0, 0.1)',
-                  borderRadius: '4px',
-                  border: '1px solid var(--gm-yellow)'
-                }}>
-                  <div style={{
-                    fontSize: '0.9rem',
-                    color: 'var(--gm-yellow)',
-                    marginBottom: '8px',
-                    fontWeight: 'bold'
-                  }}>
-                    EMERGENCY SCENARIOS:
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('reactor_fluctuation', {
-                        intensity: 30,
-                        duration: 15
-                      }, 'engineering');
-                    }}>Reactor Fluctuation</EmitButton>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', {
-                        type: 'power_surge',
-                        severity: 3
-                      }, 'engineering');
-                    }}>Power Surge</EmitRed>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('system_malfunction', {
-                        system: 'random',
-                        duration: 30
-                      }, 'engineering');
-                    }}>Random Malfunction</EmitButton>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', {
-                        type: 'coolant_leak',
-                        severity: 4
-                      }, 'engineering');
-                    }}>Coolant Leak</EmitRed>
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '6px' }}>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('emergency_scenario', {
-                        type: 'reactor_overload',
-                        severity: 5
-                      }, 'engineering');
-                    }}>🚨 REACTOR OVERLOAD 🚨</EmitRed>
-                  </div>
-                </div>
 
                 {/* Droid Management Controls */}
                 <div style={{
@@ -3385,7 +3067,582 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                   </div>
                 </div>
 
-                {/* Ship Strain Controls */}
+                {/* Power Distribution Controls */}
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(255, 140, 0, 0.1)',
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-yellow)'
+                }}>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-yellow)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
+                  }}>
+                    POWER DISTRIBUTION:
+                  </div>
+                  
+                  {/* Display Total Allocated Power */}
+                  <Row>
+                    <span>Total Allocated:</span>
+                    <span style={{
+                      color: Object.values(powerAllocations).reduce((sum, val) => sum + val, 0) > 600 ? 'var(--gm-red)' : 'var(--gm-green)'
+                    }}>
+                      {Object.values(powerAllocations).reduce((sum, val) => sum + val, 0)} units
+                    </span>
+                  </Row>
+                  <Row>
+                    <span>Available Power:</span>
+                    <span style={{ color: 'var(--gm-blue)' }}>
+                      {states.engineering?.powerDistribution?.totalPower ?? 600} units
+                    </span>
+                  </Row>
+                  
+                  {/* Individual System Power Sliders */}
+                  <div style={{ marginTop: '10px' }}>
+                    {Object.entries(powerAllocations).map(([systemName, allocation]) => {
+                      const systemDisplayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                               systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                      
+                      return (
+                        <div key={systemName} style={{ marginBottom: '8px' }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: '4px'
+                          }}>
+                            <span style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 'bold',
+                              color: allocation >= 115 ? '#88ff88' : allocation < 100 ? '#ff8888' : 'var(--gm-yellow)'
+                            }}>
+                              {systemDisplayName}:
+                            </span>
+                            <span style={{
+                              fontSize: '0.8rem',
+                              fontWeight: 'bold',
+                              color: allocation >= 115 ? '#88ff88' : allocation < 100 ? '#ff8888' : 'var(--gm-yellow)'
+                            }}>
+                              {allocation} units
+                            </span>
+                          </div>
+                          
+                          <input
+                            type="range"
+                            min="0"
+                            max="200"
+                            step="5"
+                            value={allocation}
+                            onChange={(e) => {
+                              const newValue = parseInt(e.target.value);
+                              
+                              // Update local power allocations state
+                              setPowerAllocations(prev => ({
+                                ...prev,
+                                [systemName]: newValue
+                              }));
+                              
+                              // Broadcast to Engineering Station
+                              sendBroadcast('set_power_allocation', {
+                                system: systemName,
+                                value: newValue
+                              }, 'engineering');
+                              
+                              console.log(`🔌 GM Station: Setting ${systemName} power to ${newValue} units`);
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '4px',
+                              background: `linear-gradient(to right, 
+                                #ff8c00 0%, 
+                                #ff8c00 50%, 
+                                #88ff88 50%, 
+                                #88ff88 57.5%, 
+                                #44ff44 57.5%, 
+                                #44ff44 75%, 
+                                #ffff44 75%)`,
+                              borderRadius: '2px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              accentColor: allocation >= 115 ? '#88ff88' : 'var(--gm-yellow)'
+                            }}
+                          />
+                          
+                          {/* Power level indicator */}
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            marginTop: '2px',
+                            fontSize: '0.6rem',
+                            color: '#666666'
+                          }}>
+                            <span>0</span>
+                            <span style={{ color: allocation >= 115 ? '#88ff88' : '#666' }}>115+</span>
+                            <span>200</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Power Distribution Presets */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginTop: '8px' }}>
+                    <EmitButton onClick={() => {
+                      const balancedPower = {
+                        weapons: 100,
+                        shields: 100,
+                        engines: 100,
+                        sensors: 100,
+                        lifeSupport: 100,
+                        communications: 100
+                      };
+                      setPowerAllocations(balancedPower);
+                      Object.entries(balancedPower).forEach(([system, value]) => {
+                        sendBroadcast('set_power_allocation', {
+                          system,
+                          value
+                        }, 'engineering');
+                      });
+                    }}>Balanced (100)</EmitButton>
+                    
+                    <EmitButton onClick={() => {
+                      const combatPower = {
+                        weapons: 130,
+                        shields: 120,
+                        engines: 110,
+                        sensors: 80,
+                        lifeSupport: 80,
+                        communications: 80
+                      };
+                      setPowerAllocations(combatPower);
+                      Object.entries(combatPower).forEach(([system, value]) => {
+                        sendBroadcast('set_power_allocation', {
+                          system,
+                          value
+                        }, 'engineering');
+                      });
+                    }}>Combat Ready</EmitButton>
+                    
+                    <EmitButton onClick={() => {
+                      const stealthPower = {
+                        weapons: 60,
+                        shields: 80,
+                        engines: 120,
+                        sensors: 110,
+                        lifeSupport: 100,
+                        communications: 130
+                      };
+                      setPowerAllocations(stealthPower);
+                      Object.entries(stealthPower).forEach(([system, value]) => {
+                        sendBroadcast('set_power_allocation', {
+                          system,
+                          value
+                        }, 'engineering');
+                      });
+                    }}>Stealth Mode</EmitButton>
+                    
+                    <EmitRed onClick={() => {
+                      const emergencyPower = {
+                        weapons: 40,
+                        shields: 60,
+                        engines: 80,
+                        sensors: 60,
+                        lifeSupport: 140,
+                        communications: 60
+                      };
+                      setPowerAllocations(emergencyPower);
+                      Object.entries(emergencyPower).forEach(([system, value]) => {
+                        sendBroadcast('set_power_allocation', {
+                          system,
+                          value
+                        }, 'engineering');
+                      });
+                    }}>Emergency</EmitRed>
+                  </div>
+                </div>
+
+                {/* Power Distribution Summary Panel */}
+                <div style={{
+                  marginTop: 15,
+                  padding: '8px',
+                  background: 'rgba(68, 255, 255, 0.1)',
+                  borderRadius: '4px',
+                  border: '1px solid var(--gm-blue)'
+                }}>
+                  <div style={{
+                    fontSize: '0.9rem',
+                    color: 'var(--gm-blue)',
+                    marginBottom: '8px',
+                    fontWeight: 'bold'
+                  }}>
+                    SYSTEM DICE BONUSES:
+                  </div>
+                  
+                  {(() => {
+                    const maxBonusSystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 200);
+                    const yellowDiceSystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 150 && power < 200);
+                    const greenDiceSystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 130 && power < 150);
+                    const blueDiceSystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 115 && power < 130);
+                    const standardSystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 100 && power < 115);
+                    const purplePenaltySystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 85 && power < 100);
+                    const redPenaltySystems = Object.entries(powerAllocations).filter(([_, power]) => power >= 50 && power < 85);
+                    const blackPenaltySystems = Object.entries(powerAllocations).filter(([_, power]) => power > 0 && power < 50);
+                    const maxPenaltySystems = Object.entries(powerAllocations).filter(([_, power]) => power === 0);
+                    
+                    const getDiceInfo = (power: number) => {
+                      if (power >= 200) {
+                        return { text: '+3 Dice (Blue, Green, Yellow)', color: '#2196F3', bgColor: 'rgba(33, 150, 243, 0.2)' };
+                      } else if (power >= 150) {
+                        return { text: '+1 Yellow Die', color: '#FFEB3B', bgColor: 'rgba(255, 235, 59, 0.2)' };
+                      } else if (power >= 130) {
+                        return { text: '+1 Green Die', color: '#4CAF50', bgColor: 'rgba(76, 175, 80, 0.2)' };
+                      } else if (power >= 115) {
+                        return { text: '+1 Blue Die', color: '#03A9F4', bgColor: 'rgba(3, 169, 244, 0.2)' };
+                      } else if (power >= 100) {
+                        return { text: 'Standard Power', color: '#9E9E9E', bgColor: 'rgba(158, 158, 158, 0.2)' };
+                      } else if (power >= 85) {
+                        return { text: '-1 Purple Die', color: '#9C27B0', bgColor: 'rgba(156, 39, 176, 0.2)' };
+                      } else if (power >= 50) {
+                        return { text: '-1 Red Die', color: '#F44336', bgColor: 'rgba(244, 67, 54, 0.2)' };
+                      } else if (power > 0) {
+                        return { text: '-1 Black Die', color: '#424242', bgColor: 'rgba(66, 66, 66, 0.2)' };
+                      } else {
+                        return { text: '-3 Dice (Black, Purple, Red)', color: '#000000', bgColor: 'rgba(255, 0, 0, 0.3)' };
+                      }
+                    };
+                    
+                    const allSystemsStandard = maxBonusSystems.length === 0 && yellowDiceSystems.length === 0 && 
+                                             greenDiceSystems.length === 0 && blueDiceSystems.length === 0 &&
+                                             purplePenaltySystems.length === 0 && redPenaltySystems.length === 0 &&
+                                             blackPenaltySystems.length === 0 && maxPenaltySystems.length === 0;
+                    
+                    if (allSystemsStandard) {
+                      return (
+                        <div style={{
+                          color: '#888',
+                          fontSize: '0.8rem',
+                          fontStyle: 'italic',
+                          textAlign: 'center',
+                          padding: '8px'
+                        }}>
+                          All systems at standard power (100-114 units)
+                        </div>
+                      );
+                    }
+                    
+                    return (
+                      <div>
+                        {/* Maximum Power Bonus Systems (200 units) */}
+                        {maxBonusSystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#2196F3',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              🎲 MAXIMUM POWER (200 units) - Triple Dice Bonus:
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {maxBonusSystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Yellow Die Bonus Systems (150-199 units) */}
+                        {yellowDiceSystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#FFEB3B',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              🎲 YELLOW DICE BONUSES (150+ units):
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {yellowDiceSystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Green Die Bonus Systems (130-149 units) */}
+                        {greenDiceSystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#4CAF50',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              🎲 GREEN DICE BONUSES (130+ units):
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {greenDiceSystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Purple Penalty Systems (85-99 units) */}
+                        {purplePenaltySystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#9C27B0',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              🟣 PURPLE DICE PENALTIES (85-99 units):
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {purplePenaltySystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Red Penalty Systems (50-84 units) */}
+                        {redPenaltySystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#F44336',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              🔴 RED DICE PENALTIES (50-84 units):
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {redPenaltySystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Black Penalty Systems (1-49 units) */}
+                        {blackPenaltySystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#424242',
+                              fontWeight: 'bold',
+                              marginBottom: '4px'
+                            }}>
+                              ⚫ BLACK DICE PENALTIES (1-49 units):
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {blackPenaltySystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `1px solid ${diceInfo.color}`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: diceInfo.color }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: diceInfo.color, fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Maximum Penalty Systems (0 units) */}
+                        {maxPenaltySystems.length > 0 && (
+                          <div style={{ marginBottom: '8px' }}>
+                            <div style={{
+                              fontSize: '0.8rem',
+                              color: '#000000',
+                              fontWeight: 'bold',
+                              marginBottom: '4px',
+                              background: 'rgba(255, 0, 0, 0.2)',
+                              padding: '2px 4px',
+                              borderRadius: '2px'
+                            }}>
+                              💀 CRITICAL FAILURE (0 units) - Triple Penalty:
+                            </div>
+                            <div style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+                              gap: '4px'
+                            }}>
+                              {maxPenaltySystems.map(([systemName, allocation]) => {
+                                const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                                  systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                                const diceInfo = getDiceInfo(allocation);
+                                return (
+                                  <div key={systemName} style={{
+                                    background: diceInfo.bgColor,
+                                    border: `2px solid #F44336`,
+                                    borderRadius: '3px',
+                                    padding: '4px 6px',
+                                    fontSize: '0.7rem',
+                                    textAlign: 'center'
+                                  }}>
+                                    <div style={{ fontWeight: 'bold', color: '#000000' }}>{displayName}</div>
+                                    <div style={{ color: '#aaa' }}>{allocation} units</div>
+                                    <div style={{ color: '#000000', fontSize: '0.6rem' }}>{diceInfo.text}</div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                  
+                  {/* Power Summary Stats */}
+                  <div style={{
+                    marginTop: '10px',
+                    padding: '6px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderRadius: '3px',
+                    fontSize: '0.7rem'
+                  }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#2196F3', fontWeight: 'bold' }}>Max: {Object.values(powerAllocations).filter(allocation => allocation >= 200).length}</div>
+                        <div style={{ color: '#FFEB3B', fontWeight: 'bold' }}>Yellow: {Object.values(powerAllocations).filter(allocation => allocation >= 150 && allocation < 200).length}</div>
+                        <div style={{ color: '#4CAF50', fontWeight: 'bold' }}>Green: {Object.values(powerAllocations).filter(allocation => allocation >= 130 && allocation < 150).length}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#03A9F4', fontWeight: 'bold' }}>Blue: {Object.values(powerAllocations).filter(allocation => allocation >= 115 && allocation < 130).length}</div>
+                        <div style={{ color: '#9E9E9E', fontWeight: 'bold' }}>Standard: {Object.values(powerAllocations).filter(allocation => allocation >= 100 && allocation < 115).length}</div>
+                        <div style={{ color: '#9C27B0', fontWeight: 'bold' }}>Purple: {Object.values(powerAllocations).filter(allocation => allocation >= 85 && allocation < 100).length}</div>
+                      </div>
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: '#F44336', fontWeight: 'bold' }}>Red: {Object.values(powerAllocations).filter(allocation => allocation >= 50 && allocation < 85).length}</div>
+                        <div style={{ color: '#424242', fontWeight: 'bold' }}>Black: {Object.values(powerAllocations).filter(allocation => allocation > 0 && allocation < 50).length}</div>
+                        <div style={{ color: '#000000', background: '#F44336', padding: '1px 3px', borderRadius: '2px', fontWeight: 'bold' }}>Critical: {Object.values(powerAllocations).filter(allocation => allocation === 0).length}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* System Status Controls */}
                 <div style={{
                   marginTop: 15,
                   padding: '8px',
@@ -3399,215 +3656,331 @@ const GMStation: React.FC<GMStationProps> = ({ gameState, onGMUpdate }) => {
                     marginBottom: '8px',
                     fontWeight: 'bold'
                   }}>
-                    SHIP STRAIN CONTROLS:
+                    SYSTEM STATUS CONTROLS:
                   </div>
-                  <Row>
-                    <span>Current Strain:</span>
-                    <span style={{
-                      color: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' :
-                        (states.engineering?.shipStrain?.current ?? 0) > 40 ? 'var(--gm-yellow)' : 'var(--gm-green)'
-                    }}>
-                      {states.engineering?.shipStrain?.current ?? 0}
-                    </span>
-                  </Row>
-                  <Row>
-                    <span>Max Strain:</span>
-                    <span style={{ color: 'var(--gm-blue)' }}>
-                      {states.engineering?.shipStrain?.maximum ?? 100}
-                    </span>
-                  </Row>
-
-                  {/* Current Strain Slider */}
-                  <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', marginBottom: '4px', color: 'var(--gm-red)' }}>
-                      Current Strain:
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max={states.engineering?.shipStrain?.maximum ?? 100}
-                        value={states.engineering?.shipStrain?.current ?? 0}
-                        onChange={(e) => {
-                          const newStrain = parseInt(e.target.value);
-
-                          // Update local state
-                          setStates(prev => ({
-                            ...prev,
-                            engineering: {
-                              ...prev.engineering,
-                              shipStrain: {
-                                ...prev.engineering?.shipStrain,
-                                current: newStrain,
-                                maximum: prev.engineering?.shipStrain?.maximum ?? 100
-                              }
-                            }
-                          }));
-
-                          // Send to engineering station
-                          sendBroadcast('ship_strain_update', {
-                            current: newStrain,
-                            maximum: states.engineering?.shipStrain?.maximum ?? 100
-                          }, 'engineering');
-                        }}
-                        style={{
-                          width: '100%',
-                          accentColor: (states.engineering?.shipStrain?.current ?? 0) > 70 ? 'var(--gm-red)' : 'var(--gm-yellow)'
-                        }}
-                      />
-                      <span style={{ minWidth: '30px', fontSize: '0.8rem' }}>
-                        {states.engineering?.shipStrain?.current ?? 0}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Max Strain Slider */}
-                  <div style={{ marginTop: '8px', marginBottom: '8px' }}>
-                    <div style={{ fontSize: '0.8rem', marginBottom: '4px', color: 'var(--gm-blue)' }}>
-                      Max Strain Limit:
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={states.engineering?.shipStrain?.maximum ?? 100}
-                        onChange={(e) => {
-                          const newMaxStrain = parseInt(e.target.value);
-
-                          // Update local state
-                          setStates(prev => ({
-                            ...prev,
-                            engineering: {
-                              ...prev.engineering,
-                              shipStrain: {
-                                current: Math.min(prev.engineering?.shipStrain?.current ?? 0, newMaxStrain),
-                                maximum: newMaxStrain
-                              }
-                            }
-                          }));
-
-                          // Send to engineering station
-                          sendBroadcast('ship_strain_update', {
-                            current: Math.min(states.engineering?.shipStrain?.current ?? 0, newMaxStrain),
-                            maximum: newMaxStrain
-                          }, 'engineering');
-                        }}
-                        style={{
-                          width: '100%',
-                          accentColor: 'var(--gm-blue)'
-                        }}
-                      />
-                      <span style={{ minWidth: '30px', fontSize: '0.8rem' }}>
-                        {states.engineering?.shipStrain?.maximum ?? 100}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Strain Preset Buttons */}
+                  
+                  {Object.keys(powerAllocations).map(systemName => {
+                    const displayName = systemName === 'lifeSupport' ? 'Life Support' : 
+                                        systemName.charAt(0).toUpperCase() + systemName.slice(1);
+                    const systemStatus = states.engineering?.systemStatus?.[systemName] || { health: 100, efficiency: 100, strain: 0 };
+                    
+                    return (
+                      <div key={systemName} style={{
+                        marginBottom: '12px',
+                        padding: '6px',
+                        background: 'rgba(0, 0, 0, 0.3)',
+                        borderRadius: '3px',
+                        border: '1px solid rgba(255, 255, 255, 0.1)'
+                      }}>
+                        <div style={{
+                          fontSize: '0.8rem',
+                          fontWeight: 'bold',
+                          marginBottom: '6px',
+                          color: 'var(--gm-white)'
+                        }}>
+                          {displayName}
+                        </div>
+                        
+                        {/* Health Slider */}
+                        <div style={{ marginBottom: '4px' }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: '0.7rem',
+                            marginBottom: '2px'
+                          }}>
+                            <span style={{ color: '#ff6b6b' }}>Health:</span>
+                            <span style={{ 
+                              color: systemStatus.health >= 80 ? '#4CAF50' : 
+                                     systemStatus.health >= 50 ? '#FF9800' : '#F44336'
+                            }}>
+                              {systemStatus.health}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={systemStatus.health || 100}
+                            onChange={(e) => {
+                              const newHealth = parseInt(e.target.value);
+                              
+                              // Immediately update local state for visual feedback
+                              setStates(prev => ({
+                                ...prev,
+                                engineering: {
+                                  ...prev.engineering,
+                                  systemStatus: {
+                                    ...prev.engineering?.systemStatus,
+                                    [systemName]: {
+                                      ...prev.engineering?.systemStatus?.[systemName],
+                                      health: newHealth,
+                                      damaged: newHealth < 50,
+                                      criticalDamage: newHealth < 20
+                                    }
+                                  }
+                                }
+                              }));
+                              
+                              sendBroadcast('system_health_change', {
+                                system: systemName,
+                                health: newHealth
+                              }, 'engineering');
+                              
+                              console.log(`🩺 GM Station: Setting ${systemName} health to ${newHealth}%`);
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '3px',
+                              background: `linear-gradient(to right, 
+                                #F44336 0%, 
+                                #FF9800 50%, 
+                                #4CAF50 80%, 
+                                #4CAF50 100%)`,
+                              borderRadius: '2px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              accentColor: systemStatus.health >= 50 ? '#4CAF50' : '#F44336'
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Efficiency Slider */}
+                        <div style={{ marginBottom: '4px' }}>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: '0.7rem',
+                            marginBottom: '2px'
+                          }}>
+                            <span style={{ color: '#64b5f6' }}>Efficiency:</span>
+                            <span style={{ 
+                              color: systemStatus.efficiency >= 80 ? '#4CAF50' : 
+                                     systemStatus.efficiency >= 50 ? '#FF9800' : '#F44336'
+                            }}>
+                              {systemStatus.efficiency}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={systemStatus.efficiency || 100}
+                            onChange={(e) => {
+                              const newEfficiency = parseInt(e.target.value);
+                              
+                              // Immediately update local state for visual feedback
+                              setStates(prev => ({
+                                ...prev,
+                                engineering: {
+                                  ...prev.engineering,
+                                  systemStatus: {
+                                    ...prev.engineering?.systemStatus,
+                                    [systemName]: {
+                                      ...prev.engineering?.systemStatus?.[systemName],
+                                      efficiency: newEfficiency
+                                    }
+                                  }
+                                }
+                              }));
+                              
+                              sendBroadcast('system_efficiency_change', {
+                                system: systemName,
+                                efficiency: newEfficiency
+                              }, 'engineering');
+                              
+                              console.log(`⚡ GM Station: Setting ${systemName} efficiency to ${newEfficiency}%`);
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '3px',
+                              background: `linear-gradient(to right, 
+                                #F44336 0%, 
+                                #FF9800 50%, 
+                                #4CAF50 80%, 
+                                #4CAF50 100%)`,
+                              borderRadius: '2px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              accentColor: systemStatus.efficiency >= 50 ? '#4CAF50' : '#F44336'
+                            }}
+                          />
+                        </div>
+                        
+                        {/* Strain Slider */}
+                        <div>
+                          <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            fontSize: '0.7rem',
+                            marginBottom: '2px'
+                          }}>
+                            <span style={{ color: '#ffb74d' }}>Strain:</span>
+                            <span style={{ 
+                              color: systemStatus.strain <= 30 ? '#4CAF50' : 
+                                     systemStatus.strain <= 70 ? '#FF9800' : '#F44336'
+                            }}>
+                              {systemStatus.strain}%
+                            </span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={systemStatus.strain || 0}
+                            onChange={(e) => {
+                              const newStrain = parseInt(e.target.value);
+                              
+                              // Immediately update local state for visual feedback
+                              setStates(prev => ({
+                                ...prev,
+                                engineering: {
+                                  ...prev.engineering,
+                                  systemStatus: {
+                                    ...prev.engineering?.systemStatus,
+                                    [systemName]: {
+                                      ...prev.engineering?.systemStatus?.[systemName],
+                                      strain: newStrain
+                                    }
+                                  }
+                                }
+                              }));
+                              
+                              sendBroadcast('system_strain_change', {
+                                system: systemName,
+                                strain: newStrain
+                              }, 'engineering');
+                              
+                              console.log(`🔥 GM Station: Setting ${systemName} strain to ${newStrain}%`);
+                            }}
+                            style={{
+                              width: '100%',
+                              height: '3px',
+                              background: `linear-gradient(to right, 
+                                #4CAF50 0%, 
+                                #4CAF50 30%, 
+                                #FF9800 70%, 
+                                #F44336 100%)`,
+                              borderRadius: '2px',
+                              outline: 'none',
+                              cursor: 'pointer',
+                              accentColor: systemStatus.strain <= 50 ? '#4CAF50' : '#F44336'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                  
+                  {/* System Status Presets */}
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '6px', marginTop: '8px' }}>
                     <EmitButton onClick={() => {
-                      const newStrain = 0;
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          shipStrain: {
-                            ...prev.engineering?.shipStrain,
-                            current: newStrain,
-                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                      // Immediately update local state for visual feedback
+                      setStates(prev => {
+                        const updatedSystemStatus = { ...prev.engineering?.systemStatus };
+                        Object.keys(powerAllocations).forEach(systemName => {
+                          updatedSystemStatus[systemName] = {
+                            ...updatedSystemStatus[systemName],
+                            health: 100,
+                            efficiency: 100,
+                            strain: 0,
+                            damaged: false,
+                            criticalDamage: false
+                          };
+                        });
+                        
+                        return {
+                          ...prev,
+                          engineering: {
+                            ...prev.engineering,
+                            systemStatus: updatedSystemStatus
                           }
-                        }
-                      }));
-                      sendBroadcast('ship_strain_update', {
-                        current: newStrain,
-                        maximum: states.engineering?.shipStrain?.maximum ?? 100
-                      }, 'engineering');
-                    }}>0 (Reset)</EmitButton>
+                        };
+                      });
+                      
+                      // Broadcast to Engineering Station
+                      Object.keys(powerAllocations).forEach(systemName => {
+                        sendBroadcast('system_health_change', { system: systemName, health: 100 }, 'engineering');
+                        sendBroadcast('system_efficiency_change', { system: systemName, efficiency: 100 }, 'engineering');
+                        sendBroadcast('system_strain_change', { system: systemName, strain: 0 }, 'engineering');
+                      });
+                    }} style={{ fontSize: '0.6rem', padding: '4px 6px' }}>
+                      All Optimal
+                    </EmitButton>
+                    
                     <EmitButton onClick={() => {
-                      const newStrain = 50;
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          shipStrain: {
-                            ...prev.engineering?.shipStrain,
-                            current: newStrain,
-                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                      // Immediately update local state for visual feedback
+                      setStates(prev => {
+                        const updatedSystemStatus = { ...prev.engineering?.systemStatus };
+                        Object.keys(powerAllocations).forEach(systemName => {
+                          updatedSystemStatus[systemName] = {
+                            ...updatedSystemStatus[systemName],
+                            health: 75,
+                            efficiency: 60,
+                            strain: 40,
+                            damaged: false,
+                            criticalDamage: false
+                          };
+                        });
+                        
+                        return {
+                          ...prev,
+                          engineering: {
+                            ...prev.engineering,
+                            systemStatus: updatedSystemStatus
                           }
-                        }
-                      }));
-                      sendBroadcast('ship_strain_update', {
-                        current: newStrain,
-                        maximum: states.engineering?.shipStrain?.maximum ?? 100
-                      }, 'engineering');
-                    }}>50 (Moderate)</EmitButton>
-                    <EmitRed onClick={() => {
-                      const newStrain = 90;
-                      setStates(prev => ({
-                        ...prev,
-                        engineering: {
-                          ...prev.engineering,
-                          shipStrain: {
-                            ...prev.engineering?.shipStrain,
-                            current: newStrain,
-                            maximum: prev.engineering?.shipStrain?.maximum ?? 100
+                        };
+                      });
+                      
+                      // Broadcast to Engineering Station
+                      Object.keys(powerAllocations).forEach(systemName => {
+                        sendBroadcast('system_health_change', { system: systemName, health: 75 }, 'engineering');
+                        sendBroadcast('system_efficiency_change', { system: systemName, efficiency: 60 }, 'engineering');
+                        sendBroadcast('system_strain_change', { system: systemName, strain: 40 }, 'engineering');
+                      });
+                    }} style={{ fontSize: '0.6rem', padding: '4px 6px' }}>
+                      All Degraded
+                    </EmitButton>
+                    
+                    <EmitButton onClick={() => {
+                      // Immediately update local state for visual feedback
+                      setStates(prev => {
+                        const updatedSystemStatus = { ...prev.engineering?.systemStatus };
+                        Object.keys(powerAllocations).forEach(systemName => {
+                          updatedSystemStatus[systemName] = {
+                            ...updatedSystemStatus[systemName],
+                            health: 25,
+                            efficiency: 20,
+                            strain: 95,
+                            damaged: true,
+                            criticalDamage: true
+                          };
+                        });
+                        
+                        return {
+                          ...prev,
+                          engineering: {
+                            ...prev.engineering,
+                            systemStatus: updatedSystemStatus
                           }
-                        }
-                      }));
-                      sendBroadcast('ship_strain_update', {
-                        current: newStrain,
-                        maximum: states.engineering?.shipStrain?.maximum ?? 100
-                      }, 'engineering');
-                    }}>90 (Critical)</EmitRed>
+                        };
+                      });
+                      
+                      // Broadcast to Engineering Station
+                      Object.keys(powerAllocations).forEach(systemName => {
+                        sendBroadcast('system_health_change', { system: systemName, health: 25 }, 'engineering');
+                        sendBroadcast('system_efficiency_change', { system: systemName, efficiency: 20 }, 'engineering');
+                        sendBroadcast('system_strain_change', { system: systemName, strain: 95 }, 'engineering');
+                      });
+                    }} style={{ fontSize: '0.6rem', padding: '4px 6px', borderColor: 'var(--gm-red)' }}>
+                      All Critical
+                    </EmitButton>
                   </div>
                 </div>
 
-                {/* Engineering Configuration Controls */}
-                <div style={{
-                  marginTop: 15,
-                  padding: '8px',
-                  background: 'rgba(0, 136, 255, 0.1)',
-                  borderRadius: '4px',
-                  border: '1px solid var(--gm-blue)'
-                }}>
-                  <div style={{
-                    fontSize: '0.9rem',
-                    color: 'var(--gm-blue)',
-                    marginBottom: '8px',
-                    fontWeight: 'bold'
-                  }}>
-                    SYSTEM CONFIGURATION:
-                  </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('system_configuration', {
-                        difficulty: 'easy',
-                        repairSpeed: 1.5,
-                        damageResistance: 1.2
-                      }, 'engineering');
-                    }}>Easy Mode</EmitButton>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('system_configuration', {
-                        difficulty: 'hard',
-                        repairSpeed: 0.7,
-                        damageResistance: 0.8
-                      }, 'engineering');
-                    }}>Hard Mode</EmitButton>
-                    <EmitButton onClick={() => {
-                      sendBroadcast('random_event', {
-                        enabled: true,
-                        frequency: 'medium'
-                      }, 'engineering');
-                    }}>Enable Random Events</EmitButton>
-                    <EmitRed onClick={() => {
-                      sendBroadcast('random_event', {
-                        enabled: false
-                      }, 'engineering');
-                    }}>Disable Events</EmitRed>
-                  </div>
-                </div>
-              </div>
+
+
+
 
 
 

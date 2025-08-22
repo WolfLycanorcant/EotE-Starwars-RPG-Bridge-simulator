@@ -125,7 +125,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     const [powerHistory, setPowerHistory] = useState<Array<{ timestamp: number; allocations: typeof engineeringState.powerDistribution.powerAllocations }>>([]);
 
     // Droid management state
-    const [availableDroids, setAvailableDroids] = useState<number>(1);
+    const [availableDroids, setAvailableDroids] = useState<number>(3);
 
     // Ship strain management state
     const [shipStrain, setShipStrain] = useState<{ current: number; maximum: number }>({
@@ -133,19 +133,174 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         maximum: 100
     });
 
+    // Software damage system state
+    const [softwareDamageEvents, setSoftwareDamageEvents] = useState<Array<{
+        id: string;
+        systemName: string;
+        eventType: string;
+        description: string;
+        efficiencyReduction: number;
+        requiredScanLevel: 'basic' | 'deep' | 'comprehensive';
+        timestamp: number;
+        resolved: boolean;
+    }>>([]);
+
+    const [lastHourlyCheck, setLastHourlyCheck] = useState<number>(Date.now());
+
+    // Predefined software damage events
+    const softwareDamageEventTemplates = [
+        // Weapons System Events
+        {
+            systemName: 'weapons',
+            eventType: 'targeting_drift',
+            description: 'Targeting calibration algorithms experiencing drift - weapon accuracy degrading',
+            efficiencyReductions: [25, 50, 75],
+            requiredScanLevels: ['basic', 'deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'weapons',
+            eventType: 'fire_control_lag',
+            description: 'Fire control software timing errors detected - weapon synchronization failing',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'weapons',
+            eventType: 'power_coupling_firmware',
+            description: 'Power coupling firmware corruption - energy transfer efficiency compromised',
+            efficiencyReductions: [50, 75],
+            requiredScanLevels: ['comprehensive'] as const
+        },
+
+        // Shields System Events
+        {
+            systemName: 'shields',
+            eventType: 'shield_matrix_calculation',
+            description: 'Shield matrix calculation errors - deflector field geometry unstable',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['basic', 'deep'] as const
+        },
+        {
+            systemName: 'shields',
+            eventType: 'harmonic_resonance_error',
+            description: 'Harmonic resonance frequency drift - shield harmonics out of sync',
+            efficiencyReductions: [50, 75],
+            requiredScanLevels: ['deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'shields',
+            eventType: 'emitter_array_firmware',
+            description: 'Shield emitter array firmware corrupted - field projection failing',
+            efficiencyReductions: [75],
+            requiredScanLevels: ['comprehensive'] as const
+        },
+
+        // Engines System Events
+        {
+            systemName: 'engines',
+            eventType: 'thrust_vector_calculation',
+            description: 'Thrust vectoring algorithms malfunctioning - maneuverability compromised',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['basic', 'deep'] as const
+        },
+        {
+            systemName: 'engines',
+            eventType: 'fuel_injection_timing',
+            description: 'Fuel injection timing software errors - combustion efficiency degraded',
+            efficiencyReductions: [50, 75],
+            requiredScanLevels: ['deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'engines',
+            eventType: 'inertial_compensator_drift',
+            description: 'Inertial compensator calculation drift - crew comfort and efficiency affected',
+            efficiencyReductions: [25],
+            requiredScanLevels: ['basic'] as const
+        },
+
+        // Sensors System Events
+        {
+            systemName: 'sensors',
+            eventType: 'sensor_fusion_error',
+            description: 'Sensor fusion algorithms corrupted - data correlation failing',
+            efficiencyReductions: [25, 50, 75],
+            requiredScanLevels: ['basic', 'deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'sensors',
+            eventType: 'signal_processing_lag',
+            description: 'Signal processing software bottleneck - detection latency increased',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['deep', 'comprehensive'] as const
+        },
+        {
+            systemName: 'sensors',
+            eventType: 'calibration_database_corrupt',
+            description: 'Sensor calibration database corruption - baseline readings invalid',
+            efficiencyReductions: [50, 75],
+            requiredScanLevels: ['comprehensive'] as const
+        },
+
+        // Life Support System Events
+        {
+            systemName: 'lifeSupport',
+            eventType: 'atmospheric_monitoring_error',
+            description: 'Atmospheric monitoring software glitch - air quality readings inconsistent',
+            efficiencyReductions: [25],
+            requiredScanLevels: ['basic'] as const
+        },
+        {
+            systemName: 'lifeSupport',
+            eventType: 'environmental_control_drift',
+            description: 'Environmental control algorithms drifting - temperature regulation failing',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['basic', 'deep'] as const
+        },
+        {
+            systemName: 'lifeSupport',
+            eventType: 'resource_allocation_error',
+            description: 'Resource allocation software miscalculating consumption rates',
+            efficiencyReductions: [50, 75],
+            requiredScanLevels: ['deep', 'comprehensive'] as const
+        },
+
+        // Communications System Events
+        {
+            systemName: 'communications',
+            eventType: 'protocol_stack_corruption',
+            description: 'Communication protocol stack corruption - signal reliability degraded',
+            efficiencyReductions: [25, 50],
+            requiredScanLevels: ['basic', 'deep'] as const
+        },
+        {
+            systemName: 'communications',
+            eventType: 'encryption_key_drift',
+            description: 'Encryption key generation drift - secure channel integrity compromised',
+            efficiencyReductions: [50],
+            requiredScanLevels: ['deep'] as const
+        },
+        {
+            systemName: 'communications',
+            eventType: 'antenna_array_sync_error',
+            description: 'Antenna array synchronization error - transmission coherence failing',
+            efficiencyReductions: [75],
+            requiredScanLevels: ['comprehensive'] as const
+        }
+    ];
+
     // Initialize engineering state with default values
     const [engineeringState, setEngineeringState] = useState<EngineeringState>({
         powerDistribution: {
             totalPower: 600,
-            reactorOutput: 600,
+            reactorOutput: 600, // This is now in absolute units (0-600)
             emergencyPower: false,
             powerAllocations: {
-                weapons: 80,
-                shields: 80,
-                engines: 80,
-                sensors: 80,
-                lifeSupport: 80,
-                communications: 80,
+                weapons: 100,
+                shields: 100,
+                engines: 100,
+                sensors: 100,
+                lifeSupport: 100,
+                communications: 100,
             },
         },
         systemStatus: {
@@ -165,8 +320,9 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         },
     });
 
-    // Power calculation functions
+    // Power calculation functions - now using units throughout
     const calculateTotalAvailablePower = (): number => {
+        // Reactor output is now stored as absolute units (0-600)
         const basePower = engineeringState.powerDistribution.reactorOutput;
         const emergencyBonus = engineeringState.powerDistribution.emergencyPower ? 100 : 0;
         return basePower + emergencyBonus;
@@ -202,6 +358,21 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         return totalAllocated <= totalAvailable;
     };
 
+    // Helper function to calculate bonuses based on power level
+    const calculateBonusesForPowerLevel = (powerLevel: number) => {
+        const bonuses = [];
+        if (powerLevel >= 115) {
+            bonuses.push({ type: 'boost', name: 'Blue Boost Die', color: '#88ff88', description: 'Add 1 Boost Die to checks' });
+        }
+        if (powerLevel >= 130) {
+            bonuses.push({ type: 'ability', name: 'Green Die', color: '#44ff44', description: 'Add 1 Green Die to checks' });
+        }
+        if (powerLevel >= 150) {
+            bonuses.push({ type: 'upgrade', name: 'Upgrade Die', color: '#ffff44', description: 'Upgrade 1 Green Die to Yellow Die' });
+        }
+        return bonuses;
+    };
+
     // Power efficiency calculation based on system damage
     const calculatePowerEfficiency = (systemName: string, allocatedPower: number): number => {
         const systemStatus = engineeringState.systemStatus[systemName];
@@ -217,11 +388,122 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         return Math.round(effectivePower);
     };
 
+    // Software damage system functions
+    const generateSoftwareDamageEvent = () => {
+        const template = softwareDamageEventTemplates[Math.floor(Math.random() * softwareDamageEventTemplates.length)];
+        const efficiencyReduction = template.efficiencyReductions[Math.floor(Math.random() * template.efficiencyReductions.length)];
+        const requiredScanLevel = template.requiredScanLevels[Math.floor(Math.random() * template.requiredScanLevels.length)];
+        
+        const event = {
+            id: `sw_dmg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            systemName: template.systemName,
+            eventType: template.eventType,
+            description: template.description,
+            efficiencyReduction,
+            requiredScanLevel,
+            timestamp: Date.now(),
+            resolved: false
+        };
+
+        return event;
+    };
+
+    const applySoftwareDamage = (event: typeof softwareDamageEvents[0]) => {
+        setEngineeringState(prev => {
+            const currentSystem = prev.systemStatus[event.systemName];
+            const newEfficiency = Math.max(10, currentSystem.efficiency - event.efficiencyReduction);
+            
+            return {
+                ...prev,
+                systemStatus: {
+                    ...prev.systemStatus,
+                    [event.systemName]: {
+                        ...currentSystem,
+                        efficiency: newEfficiency
+                    }
+                }
+            };
+        });
+
+        setSoftwareDamageEvents(prev => [...prev, event]);
+        
+        console.log(`💻 Software damage applied to ${event.systemName}: ${event.description}`);
+        console.log(`💻 Efficiency reduced by ${event.efficiencyReduction}% - requires ${event.requiredScanLevel} scan to restore`);
+        
+        // Generic diagnostic message
+        addErrorMessage('🔍 DIAGNOSTIC ALERT: System irregularities detected. Run comprehensive diagnostics to identify affected systems.', 'warning');
+        
+        // Specific system alert (appears after a short delay)
+        setTimeout(() => {
+            addErrorMessage(`SOFTWARE ALERT: ${event.systemName.toUpperCase()} system experiencing software malfunction. Efficiency reduced by ${event.efficiencyReduction}%. Diagnostic scan required.`, 'warning');
+        }, 2000); // 2 second delay
+    };
+
+    const resolveSoftwareDamage = (eventId: string, scanType: 'basic' | 'deep' | 'comprehensive') => {
+        const event = softwareDamageEvents.find(e => e.id === eventId && !e.resolved);
+        if (!event) return false;
+
+        // Check if scan level meets or exceeds requirement
+        const scanLevels = { basic: 1, deep: 2, comprehensive: 3 };
+        const requiredLevel = scanLevels[event.requiredScanLevel];
+        const providedLevel = scanLevels[scanType];
+
+        if (providedLevel < requiredLevel) {
+            console.log(`💻 Scan level ${scanType} insufficient for ${event.systemName} software damage (requires ${event.requiredScanLevel})`);
+            addErrorMessage(`Scan level insufficient: ${event.systemName} requires ${event.requiredScanLevel.toUpperCase()} scan level to resolve software damage.`, 'warning');
+            return false;
+        }
+
+        // Restore efficiency
+        setEngineeringState(prev => {
+            const currentSystem = prev.systemStatus[event.systemName];
+            const restoredEfficiency = Math.min(100, currentSystem.efficiency + event.efficiencyReduction);
+            
+            return {
+                ...prev,
+                systemStatus: {
+                    ...prev.systemStatus,
+                    [event.systemName]: {
+                        ...currentSystem,
+                        efficiency: restoredEfficiency
+                    }
+                }
+            };
+        });
+
+        // Mark event as resolved
+        setSoftwareDamageEvents(prev => 
+            prev.map(e => e.id === eventId ? { ...e, resolved: true } : e)
+        );
+
+        console.log(`💻 Software damage resolved for ${event.systemName}: efficiency restored by ${event.efficiencyReduction}%`);
+        addErrorMessage(`SOFTWARE RESTORED: ${event.systemName.toUpperCase()} software damage resolved. Efficiency restored by ${event.efficiencyReduction}%.`, 'info');
+        
+        return true;
+    };
+
+    const checkForHourlySoftwareDamage = () => {
+        const now = Date.now();
+        const hourInMs = 60 * 60 * 1000; // 1 hour in milliseconds
+        
+        if (now - lastHourlyCheck >= hourInMs) {
+            setLastHourlyCheck(now);
+            
+            // 25% chance of software damage
+            if (Math.random() < 0.25) {
+                const damageEvent = generateSoftwareDamageEvent();
+                applySoftwareDamage(damageEvent);
+            } else {
+                console.log('💻 Hourly software check: No software damage events triggered');
+            }
+        }
+    };
+
     // Helper function to emit state updates to GM station
     const emitStateUpdate = (updatedState?: Partial<EngineeringState>) => {
         if (socket) {
             const currentState = updatedState || engineeringState;
-            socket.emit('state_update', {
+            const stateToEmit = {
                 station: 'engineering',
                 state: {
                     powerDistribution: currentState.powerDistribution || engineeringState.powerDistribution,
@@ -230,68 +512,15 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     activeBoosts: currentState.activeBoosts || engineeringState.activeBoosts,
                     emergencyProcedures: currentState.emergencyProcedures || engineeringState.emergencyProcedures
                 }
-            });
-        }
-    };
-
-    // Power allocation update function
-    const updatePowerAllocation = (systemName: string, newValue: number) => {
-        if (!validatePowerAllocation(systemName, newValue)) {
-            console.warn(`⚠️ Power allocation rejected: Would exceed total available power`);
-            return;
-        }
-
-        const newAllocations = {
-            ...engineeringState.powerDistribution.powerAllocations,
-            [systemName]: newValue
-        };
-
-        const updatedPowerDistribution = {
-            ...engineeringState.powerDistribution,
-            powerAllocations: newAllocations
-        };
-
-        setEngineeringState(prev => ({
-            ...prev,
-            powerDistribution: updatedPowerDistribution
-        }));
-
-        // Add to power history (keep last 20 entries)
-        setPowerHistory(prev => {
-            const newEntry = {
-                timestamp: Date.now(),
-                allocations: newAllocations
             };
-            const updatedHistory = [...prev, newEntry].slice(-20);
-            return updatedHistory;
-        });
-
-        // Calculate effective power for the system
-        const effectivePower = calculatePowerEfficiency(systemName, newValue);
-
-        // Emit power change to other stations with efficiency data
-        if (socket) {
-            socket.emit('engineering_action', {
-                room: new URLSearchParams(window.location.search).get('room') || 'default',
-                type: 'power_allocation_change',
-                system: systemName,
-                value: newValue,
-                effectivePower: effectivePower,
-                totalAllocated: Object.values(newAllocations).reduce((total, allocation) => total + allocation, 0),
-                efficiency: calculatePowerEfficiency(systemName, newValue) / newValue * 100
-            });
-
-            // Emit state update for GM station
-            emitStateUpdate({
-                powerDistribution: updatedPowerDistribution,
-                systemStatus: engineeringState.systemStatus,
-                repairQueue: engineeringState.repairQueue,
-                activeBoosts: engineeringState.activeBoosts,
-                emergencyProcedures: engineeringState.emergencyProcedures
-            });
+            
+            console.log('🔧 Engineering Station: Emitting state_update to GM Station');
+            console.log('🔧 Engineering Station: Power allocations being sent:', stateToEmit.state.powerDistribution?.powerAllocations);
+            
+            socket.emit('state_update', stateToEmit);
+        } else {
+            console.warn('🔧 Engineering Station: Cannot emit state update - no socket connection');
         }
-
-        console.log(`⚡ Power allocation updated: ${systemName} = ${newValue}% (${effectivePower}% effective)`);
     };
 
     // System health tracking functions
@@ -1234,8 +1463,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     };
 
     // GM Integration and Scenario Support
-    const handleGMSystemDamage = (damageData: { system: string; damage: number; type?: string }) => {
-        const { system, damage, type } = damageData;
+    const handleGMSystemDamage = (damageData: { system: string; healthLoss: number; damageType?: string }) => {
+        const { system, healthLoss, damageType } = damageData;
 
         if (!engineeringState.systemStatus[system]) {
             console.warn(`⚠️ GM damage event for unknown system: ${system}`);
@@ -1243,7 +1472,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         }
 
         const currentHealth = engineeringState.systemStatus[system].health;
-        const newHealth = Math.max(0, currentHealth - damage);
+        const newHealth = Math.max(0, currentHealth - healthLoss);
 
         updateSystemDamageStatus(system, newHealth);
 
@@ -1258,13 +1487,13 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 room: new URLSearchParams(window.location.search).get('room') || 'default',
                 type: 'gm_damage_received',
                 system: system,
-                damage: damage,
+                damage: healthLoss,
                 newHealth: newHealth,
                 responseTime: Date.now()
             });
         }
 
-        console.log(`🎯 GM Event: ${system} took ${damage} damage (${type || 'unspecified'}) - Health: ${newHealth.toFixed(1)}%`);
+        console.log(`🎯 GM Event: ${system} took ${healthLoss} damage (${damageType || 'unspecified'}) - Health: ${newHealth.toFixed(1)}%`);
     };
 
     const handleGMSystemMalfunction = (malfunctionData: { system: string; type: 'power_surge' | 'efficiency_loss' | 'strain_buildup'; severity: number }) => {
@@ -1308,13 +1537,16 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             let updatedPowerDistribution = { ...prev.powerDistribution };
 
             if (powerData.reactorOutput !== undefined) {
-                updatedPowerDistribution.reactorOutput = Math.max(0, Math.min(100, powerData.reactorOutput));
-                updatedPowerDistribution.totalPower = calculateTotalAvailablePower();
+                const clampedReactorOutput = Math.max(0, Math.min(600, powerData.reactorOutput));
+                updatedPowerDistribution.reactorOutput = clampedReactorOutput;
+                // Calculate totalPower using units directly
+                updatedPowerDistribution.totalPower = clampedReactorOutput + (updatedPowerDistribution.emergencyPower ? 100 : 0);
             }
 
             if (powerData.emergencyPower !== undefined) {
                 updatedPowerDistribution.emergencyPower = powerData.emergencyPower;
-                updatedPowerDistribution.totalPower = calculateTotalAvailablePower();
+                // Recalculate totalPower with emergency power change
+                updatedPowerDistribution.totalPower = updatedPowerDistribution.reactorOutput + (powerData.emergencyPower ? 100 : 0);
             }
 
             if (powerData.systemPowerLoss) {
@@ -1335,13 +1567,14 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     };
 
     const handleReactorOutputChange = (newOutput: number) => {
-        // Validate reactor output range (0-100% normal operation)
-        const clampedOutput = Math.max(0, Math.min(100, newOutput));
+        // Validate reactor output range (0-600 units normal operation)
+        const clampedOutput = Math.max(0, Math.min(600, newOutput));
 
         setEngineeringState(prev => {
             const updatedPowerDistribution = {
                 ...prev.powerDistribution,
                 reactorOutput: clampedOutput,
+                // Calculate totalPower using units directly
                 totalPower: clampedOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
             };
 
@@ -1353,11 +1586,13 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
 
         // Emit reactor output change to other stations
         if (socket) {
+            const calculatedTotalPower = clampedOutput + (engineeringState.powerDistribution.emergencyPower ? 100 : 0);
+            
             socket.emit('engineering_action', {
                 room: new URLSearchParams(window.location.search).get('room') || 'default',
                 type: 'reactor_output_change',
                 value: clampedOutput,
-                totalPower: clampedOutput + (engineeringState.powerDistribution.emergencyPower ? 100 : 0)
+                totalPower: calculatedTotalPower
             });
 
             // Emit state update so GM station can sync its UI
@@ -1365,7 +1600,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 powerDistribution: {
                     ...engineeringState.powerDistribution,
                     reactorOutput: clampedOutput,
-                    totalPower: clampedOutput + (engineeringState.powerDistribution.emergencyPower ? 100 : 0)
+                    totalPower: calculatedTotalPower
                 },
                 systemStatus: engineeringState.systemStatus,
                 repairQueue: engineeringState.repairQueue,
@@ -1374,25 +1609,26 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             });
         }
 
-        console.log(`⚡ Reactor output changed by GM: ${clampedOutput}%`);
+        console.log(`⚡ Reactor output changed by GM: ${clampedOutput} units`);
 
         // Add visual feedback
-        addErrorMessage(`Reactor output set to ${clampedOutput}%${clampedOutput > 100 ? ' [OVERLOAD]' : ''}`,
-            clampedOutput > 100 ? 'warning' : 'info');
+        addErrorMessage(`Reactor output set to ${clampedOutput} units${clampedOutput > 600 ? ' [OVERLOAD]' : ''}`,
+            clampedOutput > 600 ? 'warning' : 'info');
     };
 
     const handleGMReactorFluctuation = (fluctuationData: { intensity: number; duration: number }) => {
         const { intensity, duration } = fluctuationData;
 
-        // Temporarily reduce reactor output
+        // Temporarily reduce reactor output (intensity is now in units)
         const originalOutput = engineeringState.powerDistribution.reactorOutput;
-        const fluctuationOutput = Math.max(20, originalOutput - intensity);
+        const fluctuationOutput = Math.max(120, originalOutput - intensity); // Minimum 120 units (20% of 600)
 
         setEngineeringState(prev => ({
             ...prev,
             powerDistribution: {
                 ...prev.powerDistribution,
                 reactorOutput: fluctuationOutput,
+                // Calculate totalPower using units directly
                 totalPower: fluctuationOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
             }
         }));
@@ -1404,13 +1640,14 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 powerDistribution: {
                     ...prev.powerDistribution,
                     reactorOutput: originalOutput,
+                    // Calculate totalPower using units directly
                     totalPower: originalOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
                 }
             }));
-            console.log(`🎯 GM Event: Reactor fluctuation ended - Output restored to ${originalOutput}%`);
+            console.log(`🎯 GM Event: Reactor fluctuation ended - Output restored to ${originalOutput} units`);
         }, duration * 1000);
 
-        console.log(`🎯 GM Event: Reactor fluctuation - Output reduced to ${fluctuationOutput}% for ${duration}s`);
+        console.log(`🎯 GM Event: Reactor fluctuation - Output reduced to ${fluctuationOutput} units for ${duration}s`);
     };
 
     const handleGMEmergencyScenario = (scenarioData: { type: 'cascade_failure' | 'power_crisis' | 'system_overload'; systems: string[]; severity: number }) => {
@@ -1420,21 +1657,25 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             case 'cascade_failure':
                 systems.forEach(systemName => {
                     if (engineeringState.systemStatus[systemName]) {
-                        const damage = severity * 10; // Convert severity to damage
-                        handleGMSystemDamage({ system: systemName, damage, type: 'cascade_failure' });
+                        const healthLoss = severity * 10; // Convert severity to health loss
+                        handleGMSystemDamage({ system: systemName, healthLoss, damageType: 'cascade_failure' });
                     }
                 });
                 break;
 
             case 'power_crisis':
-                setEngineeringState(prev => ({
-                    ...prev,
-                    powerDistribution: {
-                        ...prev.powerDistribution,
-                        reactorOutput: Math.max(30, prev.powerDistribution.reactorOutput - severity * 5),
-                        totalPower: Math.max(30, prev.powerDistribution.reactorOutput - severity * 5)
-                    }
-                }));
+                setEngineeringState(prev => {
+                    const newReactorOutput = Math.max(180, prev.powerDistribution.reactorOutput - severity * 30); // Minimum 180 units (30% of 600), reduce by 30 units per severity level
+                    return {
+                        ...prev,
+                        powerDistribution: {
+                            ...prev.powerDistribution,
+                            reactorOutput: newReactorOutput,
+                            // Calculate totalPower using units directly
+                            totalPower: newReactorOutput + (prev.powerDistribution.emergencyPower ? 100 : 0)
+                        }
+                    };
+                });
                 break;
 
             case 'system_overload':
@@ -1555,8 +1796,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         console.log(`🎯 GM Event: Random event - ${type}: ${description}`);
     };
 
-    const handleGMSystemRepair = (repairData: { system: string; amount: number }) => {
-        const { system, amount } = repairData;
+    const handleGMSystemRepair = (repairData: { system: string; healAmount: number }) => {
+        const { system, healAmount } = repairData;
 
         if (system === 'all') {
             // Repair all systems
@@ -1565,7 +1806,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
 
                 Object.keys(updatedSystemStatus).forEach(systemName => {
                     const currentSystem = updatedSystemStatus[systemName];
-                    const newHealth = Math.min(100, currentSystem.health + amount);
+                    const newHealth = Math.min(100, currentSystem.health + healAmount);
 
                     updatedSystemStatus[systemName] = {
                         ...currentSystem,
@@ -1583,15 +1824,15 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 };
             });
 
-            console.log(`🔧 GM Event: All systems repaired (+${amount}% health)`);
-            addErrorMessage(`All systems repaired: +${amount}% health`, 'info');
+            console.log(`🔧 GM Event: All systems repaired (+${healAmount}% health)`);
+            addErrorMessage(`All systems repaired: +${healAmount}% health`, 'info');
         } else {
             // Repair specific system
             setEngineeringState(prev => {
                 const currentSystem = prev.systemStatus[system];
                 if (!currentSystem) return prev;
 
-                const newHealth = Math.min(100, currentSystem.health + amount);
+                const newHealth = Math.min(100, currentSystem.health + healAmount);
 
                 return {
                     ...prev,
@@ -1609,8 +1850,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 };
             });
 
-            console.log(`🔧 GM Event: ${system} repaired (+${amount}% health)`);
-            addErrorMessage(`${system} system repaired: +${amount}% health`, 'info');
+            console.log(`🔧 GM Event: ${system} repaired (+${healAmount}% health)`);
+            addErrorMessage(`${system} system repaired: +${healAmount}% health`, 'info');
         }
 
         // Emit state update
@@ -1682,6 +1923,106 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         emitStateUpdate();
     };
 
+    const handleGMSystemEfficiencyChange = (efficiencyData: { system: string; efficiency: number }) => {
+        const { system, efficiency } = efficiencyData;
+
+        if (!engineeringState.systemStatus[system]) {
+            console.warn(`⚠️ GM efficiency change for unknown system: ${system}`);
+            return;
+        }
+
+        // Update the system efficiency
+        setEngineeringState(prev => {
+            const currentSystem = prev.systemStatus[system];
+            const newEfficiency = Math.max(0, Math.min(100, efficiency));
+
+            return {
+                ...prev,
+                systemStatus: {
+                    ...prev.systemStatus,
+                    [system]: {
+                        ...currentSystem,
+                        efficiency: newEfficiency
+                    }
+                }
+            };
+        });
+
+        console.log(`🔧 GM Event: ${system} efficiency set to ${efficiency}%`);
+        addErrorMessage(`${system} efficiency adjusted to ${efficiency}%`, 'info');
+
+        // Emit state update to GM
+        emitStateUpdate();
+    };
+
+    const handleGMSystemStrainChange = (strainData: { system: string; strain: number }) => {
+        const { system, strain } = strainData;
+
+        if (!engineeringState.systemStatus[system]) {
+            console.warn(`⚠️ GM strain change for unknown system: ${system}`);
+            return;
+        }
+
+        // Update the system strain
+        setEngineeringState(prev => {
+            const currentSystem = prev.systemStatus[system];
+            const newStrain = Math.max(0, Math.min(100, strain));
+
+            return {
+                ...prev,
+                systemStatus: {
+                    ...prev.systemStatus,
+                    [system]: {
+                        ...currentSystem,
+                        strain: newStrain
+                    }
+                }
+            };
+        });
+
+        console.log(`🔧 GM Event: ${system} strain set to ${strain}%`);
+        addErrorMessage(`${system} strain adjusted to ${strain}%`, strain > 70 ? 'warning' : 'info');
+
+        // Emit state update to GM
+        emitStateUpdate();
+    };
+
+    const handleGMSystemHealthChange = (healthData: { system: string; health: number }) => {
+        const { system, health } = healthData;
+
+        if (!engineeringState.systemStatus[system]) {
+            console.warn(`⚠️ GM health change for unknown system: ${system}`);
+            return;
+        }
+
+        // Update the system health
+        setEngineeringState(prev => {
+            const currentSystem = prev.systemStatus[system];
+            const newHealth = Math.max(0, Math.min(100, health));
+            const newDamaged = newHealth < 50;
+            const newCriticalDamage = newHealth < 20;
+
+            return {
+                ...prev,
+                systemStatus: {
+                    ...prev.systemStatus,
+                    [system]: {
+                        ...currentSystem,
+                        health: newHealth,
+                        damaged: newDamaged,
+                        criticalDamage: newCriticalDamage
+                    }
+                }
+            };
+        });
+
+        console.log(`🔧 GM Event: ${system} health set to ${health}%`);
+        addErrorMessage(`${system} health adjusted to ${health}%`, health < 50 ? 'warning' : 'info');
+
+        // Emit state update to GM
+        emitStateUpdate();
+    };
+
     // Performance tracking for GM feedback
     const trackEngineeringPerformance = () => {
         const performance = {
@@ -1743,6 +2084,33 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
 
         return () => clearInterval(performanceInterval);
     }, [engineeringState]);
+
+    // Hourly software damage check
+    useEffect(() => {
+        const softwareDamageInterval = setInterval(() => {
+            checkForHourlySoftwareDamage();
+        }, 60000); // Check every minute (for testing)
+
+        return () => clearInterval(softwareDamageInterval);
+    }, [lastHourlyCheck, softwareDamageEvents]);
+
+    // Enhanced system scan to check for software damage resolution
+    const performSystemScanEnhanced = (systemName: string, scanType: 'basic' | 'deep' | 'comprehensive' = 'basic') => {
+        // First perform the regular scan
+        performSystemScan(systemName, scanType);
+        
+        // Check if this scan can resolve any software damage events for this system
+        const unresolvedEvents = softwareDamageEvents.filter(event => 
+            event.systemName === systemName && !event.resolved
+        );
+        
+        unresolvedEvents.forEach(event => {
+            const resolved = resolveSoftwareDamage(event.id, scanType);
+            if (resolved) {
+                console.log(`💻 Software damage resolved by ${scanType} scan: ${event.description}`);
+            }
+        });
+    };
 
     // Diagnostics and Monitoring Tools
     const [diagnosticScans, setDiagnosticScans] = useState<{ [systemName: string]: { progress: number; results?: any; scanning: boolean } }>({});
@@ -2133,6 +2501,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     const [errorMessages, setErrorMessages] = useState<Array<{ id: string; message: string; type: 'error' | 'warning' | 'info'; timestamp: number }>>([]);
     const [networkStatus, setNetworkStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
 
+    // Tooltip state for calibration buttons
+    const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+    const [tooltipPosition, setTooltipPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
     const addErrorMessage = (message: string, type: 'error' | 'warning' | 'info' = 'error') => {
         const errorId = `error_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const newError = {
@@ -2152,6 +2524,65 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         console.log(`${type.toUpperCase()}: ${message}`);
     };
 
+    // Calibration tooltip content
+    const getCalibrationTooltipContent = (calibrationType: string) => {
+        switch (calibrationType) {
+            case 'efficiency':
+                return {
+                    title: 'EFFICIENCY CALIBRATION',
+                    description: 'Fine-tune system parameters for optimal performance',
+                    effects: [
+                        'Increases efficiency by 5-15%',
+                        'Targets highest strain system',
+                        'Best for software damage recovery'
+                    ],
+                    usage: 'Use when: System efficiency < 80%'
+                };
+            case 'power':
+                return {
+                    title: 'POWER CALIBRATION',
+                    description: 'Optimize power distribution and reduce system stress',
+                    effects: [
+                        'Reduces strain by 10-15%',
+                        'Targets highest strain system',
+                        'Prevents system overload'
+                    ],
+                    usage: 'Use when: System strain > 70%'
+                };
+            case 'thermal':
+                return {
+                    title: 'THERMAL CALIBRATION',
+                    description: 'Combined cooling and heat dissipation management',
+                    effects: [
+                        'Reduces strain by 5%',
+                        'Increases efficiency by 3%',
+                        'All-around maintenance'
+                    ],
+                    usage: 'Use when: Moderate strain + efficiency issues'
+                };
+            default:
+                return null;
+        }
+    };
+
+    const handleTooltipMouseEnter = (calibrationType: string, event: React.MouseEvent) => {
+        console.log('🔧 Tooltip mouse enter:', calibrationType);
+        const rect = event.currentTarget.getBoundingClientRect();
+        const position = {
+            x: rect.left + rect.width / 2,
+            y: rect.bottom + 8
+        };
+        console.log('🔧 Tooltip position:', position);
+        setTooltipPosition(position);
+        setActiveTooltip(calibrationType);
+        console.log('🔧 Active tooltip set to:', calibrationType);
+    };
+
+    const handleTooltipMouseLeave = () => {
+        console.log('🔧 Tooltip mouse leave');
+        setActiveTooltip(null);
+    };
+
     const validatePowerAllocationInput = (systemName: string, value: number): { valid: boolean; error?: string } => {
         // Input range validation
         if (isNaN(value) || value < 0) {
@@ -2159,7 +2590,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         }
 
         if (value > 150) {
-            return { valid: false, error: `Power allocation for ${systemName} cannot exceed 150%` };
+            return { valid: false, error: `Power allocation for ${systemName} cannot exceed 150 units` };
         }
 
         // System-specific validation
@@ -2220,10 +2651,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
     const validateEmergencyProcedure = (procedureType: string): { valid: boolean; error?: string; requiresConfirmation?: boolean } => {
         switch (procedureType) {
             case 'emergency_power':
-                if (engineeringState.powerDistribution.reactorOutput < 50) {
+                if (engineeringState.powerDistribution.reactorOutput < 300) { // 300 units = 50% of 600
                     return {
                         valid: false,
-                        error: 'Cannot activate emergency power: reactor output below 50%'
+                        error: 'Cannot activate emergency power: reactor output below 300 units (50%)'
                     };
                 }
                 return {
@@ -2247,10 +2678,10 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 };
 
             case 'life_support_priority':
-                if (calculateTotalAvailablePower() < 40) {
+                if (calculateTotalAvailablePower() < 240) { // 240 units = 40% of 600
                     return {
                         valid: false,
-                        error: 'Insufficient power for life support priority mode'
+                        error: 'Insufficient power for life support priority mode (requires 240 units minimum)'
                     };
                 }
                 return {
@@ -2349,6 +2780,9 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                 [systemName]: newValue
             };
 
+            console.log(`📊 Engineering Station: Power allocation changing - ${systemName}: ${newValue}%`);
+            console.log(`📊 Engineering Station: New allocations will be:`, newAllocations);
+
             setEngineeringState(prev => ({
                 ...prev,
                 powerDistribution: {
@@ -2420,6 +2854,20 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             }
 
             console.log(`⚡ Power allocation updated: ${systemName} = ${newValue}% (${effectivePower}% effective)`);
+            
+            // Emit state update with the new allocations explicitly
+            console.log('🔧 Engineering Station: Emitting state update with new allocations:', newAllocations);
+            emitStateUpdate({
+                powerDistribution: {
+                    ...engineeringState.powerDistribution,
+                    powerAllocations: newAllocations
+                },
+                systemStatus: engineeringState.systemStatus,
+                repairQueue: engineeringState.repairQueue,
+                activeBoosts: engineeringState.activeBoosts,
+                emergencyProcedures: engineeringState.emergencyProcedures
+            });
+            
             return true;
 
         } catch (error) {
@@ -2434,26 +2882,53 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
         try {
             const validation = validateDroidAssignment(taskId, newDroidCount);
             if (!validation.valid) {
+                console.warn(`⚠️ Droid assignment validation failed:`, validation.error);
                 addErrorMessage(validation.error!, 'error');
                 return false;
             }
 
+            const task = engineeringState.repairQueue.find(t => t.id === taskId);
+            if (!task) {
+                console.error(`⚠️ Repair task not found: ${taskId}`);
+                addErrorMessage('Repair task not found', 'error');
+                return false;
+            }
+
+            const oldDroidCount = task.assignedCrew;
+            const updatedTimeRequired = calculateRepairTime(task.damageType, newDroidCount);
+
             setEngineeringState(prev => ({
                 ...prev,
-                repairQueue: prev.repairQueue.map(task => {
-                    if (task.id === taskId) {
-                        const updatedTimeRequired = calculateRepairTime(task.damageType, newDroidCount);
+                repairQueue: prev.repairQueue.map(repairTask => {
+                    if (repairTask.id === taskId) {
                         return {
-                            ...task,
+                            ...repairTask,
                             assignedCrew: newDroidCount,
                             timeRequired: updatedTimeRequired
                         };
                     }
-                    return task;
+                    return repairTask;
                 })
             }));
 
-            console.log(`🤖 Repair task ${taskId} droids updated to ${newDroidCount}`);
+            // Emit droid assignment change to GM
+            safeSocketEmit('engineering_action', {
+                room: new URLSearchParams(window.location.search).get('room') || 'default',
+                type: 'repair_droid_assignment_change',
+                taskId: taskId,
+                systemName: task.systemName,
+                oldDroidCount: oldDroidCount,
+                newDroidCount: newDroidCount,
+                newTimeRequired: updatedTimeRequired,
+                timestamp: Date.now()
+            }, 'update droid assignment');
+
+            // Emit updated state to GM
+            setTimeout(() => {
+                emitStateUpdate();
+            }, 100);
+
+            console.log(`🤖 Repair task ${task.systemName} (${taskId.slice(-8)}) droids: ${oldDroidCount} → ${newDroidCount} (time: ${Math.floor(updatedTimeRequired/60)}:${(updatedTimeRequired%60).toString().padStart(2,'0')})`);
             return true;
 
         } catch (error) {
@@ -2608,6 +3083,12 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             console.log('🔧 Engineering Station connected');
             setNetworkStatus('connected');
             addErrorMessage('Connected to bridge network', 'info');
+            
+            // Emit initial state to GM station for synchronization
+            setTimeout(() => {
+                emitStateUpdate();
+                console.log('🔧 Engineering Station: Initial state broadcasted to GM Station');
+            }, 1000); // Wait 1 second for connection to stabilize
         });
 
         socket.on('disconnect', (reason: string) => {
@@ -2620,6 +3101,12 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
             console.log('🔧 Engineering Station reconnected');
             setNetworkStatus('connected');
             addErrorMessage('Reconnected to bridge network', 'info');
+            
+            // Re-emit state to GM station after reconnection
+            setTimeout(() => {
+                emitStateUpdate();
+                console.log('🔧 Engineering Station: State re-broadcasted to GM Station after reconnection');
+            }, 1000); // Wait 1 second for connection to stabilize
         });
 
         socket.on('reconnect_attempt', () => {
@@ -2637,6 +3124,39 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                         console.log('🧪 Engineering Station: Test connection received!', data.value);
                         addErrorMessage('GM connection test received!', 'info');
                         break;
+                    case 'set_power_allocation':
+                        // Handle power allocation changes from GM Station
+                        if (data.value.system && typeof data.value.value === 'number') {
+                            console.log(`🔌 Engineering Station: GM setting ${data.value.system} power to ${data.value.value} units`);
+                            const validation = validatePowerAllocationInput(data.value.system, data.value.value);
+                            if (validation.valid) {
+                                setEngineeringState(prev => ({
+                                    ...prev,
+                                    powerDistribution: {
+                                        ...prev.powerDistribution,
+                                        powerAllocations: {
+                                            ...prev.powerDistribution.powerAllocations,
+                                            [data.value.system]: data.value.value
+                                        }
+                                    }
+                                }));
+                                
+                                // Emit the change back to GM to sync their display
+                                if (socket) {
+                                    socket.emit('engineering_action', {
+                                        room: new URLSearchParams(window.location.search).get('room') || 'default',
+                                        type: 'power_allocation_change',
+                                        system: data.value.system,
+                                        value: data.value.value
+                                    });
+                                }
+                                
+                                addErrorMessage(`Power allocation updated: ${data.value.system} set to ${data.value.value} units`, 'info');
+                            } else {
+                                addErrorMessage(validation.error || 'Invalid power allocation', 'error');
+                            }
+                        }
+                        break;
                     case 'system_damage':
                         console.log('🔧 Engineering Station: Processing system damage:', data.value);
                         handleGMSystemDamage(data.value);
@@ -2646,6 +3166,15 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                         break;
                     case 'system_malfunction':
                         handleGMSystemMalfunction(data.value);
+                        break;
+                    case 'system_efficiency_change':
+                        handleGMSystemEfficiencyChange(data.value);
+                        break;
+                    case 'system_strain_change':
+                        handleGMSystemStrainChange(data.value);
+                        break;
+                    case 'system_health_change':
+                        handleGMSystemHealthChange(data.value);
                         break;
                     case 'power_update':
                         handleGMPowerUpdate(data.value);
@@ -2922,7 +3451,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                         <div style={{ marginBottom: '15px', padding: '8px', background: 'rgba(255, 140, 0, 0.1)', borderRadius: '4px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                                 <span>Reactor Output:</span>
-                                <span style={{ fontWeight: 'bold' }}>{engineeringState.powerDistribution.reactorOutput}%</span>
+                                <span style={{ fontWeight: 'bold' }}>{engineeringState.powerDistribution.reactorOutput} units</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}>
                                 <span>Available Power:</span>
@@ -3005,24 +3534,38 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 fontWeight: 'bold',
                                                 color: isUnderPowered ? '#ff4444' : isOptimal ? '#44ff44' : '#ffaa44'
                                             }}>
-                                                {allocation}%
+                                                {allocation} units
                                             </span>
                                         </div>
                                         <input
                                             type="range"
                                             min="0"
-                                            max="150"
+                                            max="200"
+                                            step="5"
                                             value={allocation}
-                                            onChange={(e) => updatePowerAllocationSafe(systemName, parseInt(e.target.value))}
+                                            onChange={(e) => {
+                                                const newValue = parseInt(e.target.value);
+                                                updatePowerAllocationSafe(systemName, newValue);
+                                                
+                                                // Also emit to GM Station for sync
+                                                if (socket) {
+                                                    socket.emit('engineering_action', {
+                                                        room: new URLSearchParams(window.location.search).get('room') || 'default',
+                                                        type: 'power_allocation_change',
+                                                        system: systemName,
+                                                        value: newValue
+                                                    });
+                                                }
+                                            }}
                                             style={{
                                                 width: '100%',
                                                 height: '6px',
                                                 background: `linear-gradient(to right, 
                                                 #ff4444 0%, 
-                                                #ff4444 ${(requirements.minimum / 150) * 100}%, 
-                                                #ffaa44 ${(requirements.minimum / 150) * 100}%, 
-                                                #ffaa44 ${(requirements.optimal / 150) * 100}%, 
-                                                #44ff44 ${(requirements.optimal / 150) * 100}%, 
+                                                #ff4444 ${(requirements.minimum / 200) * 100}%, 
+                                                #ffaa44 ${(requirements.minimum / 200) * 100}%, 
+                                                #ffaa44 ${(requirements.optimal / 200) * 100}%, 
+                                                #44ff44 ${(requirements.optimal / 200) * 100}%, 
                                                 #44ff44 100%)`,
                                                 borderRadius: '3px',
                                                 outline: 'none',
@@ -3756,7 +4299,17 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 <span style={{ fontSize: '9px' }}>Droids Assigned:</span>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                     <button
-                                                        onClick={() => updateRepairTaskDroidsSafe(repair.id, Math.max(1, repair.assignedCrew - 1))}
+                                                        onClick={() => {
+                                                            const newDroidCount = Math.max(1, repair.assignedCrew - 1);
+                                                            console.log(`🤖 Attempting to decrease droids for ${repair.systemName} repair from ${repair.assignedCrew} to ${newDroidCount}`);
+                                                            
+                                                            if (newDroidCount < repair.assignedCrew) {
+                                                                const success = updateRepairTaskDroidsSafe(repair.id, newDroidCount);
+                                                                if (success) {
+                                                                    addErrorMessage(`Droids reduced on ${repair.systemName}: ${repair.assignedCrew} → ${newDroidCount}`, 'info');
+                                                                }
+                                                            }
+                                                        }}
                                                         disabled={repair.assignedCrew <= 1}
                                                         style={{
                                                             width: '16px',
@@ -3769,20 +4322,40 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                             cursor: repair.assignedCrew > 1 ? 'pointer' : 'not-allowed',
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            justifyContent: 'center'
+                                                            justifyContent: 'center',
+                                                            transition: 'background 0.2s ease'
                                                         }}
                                                     >
                                                         -
                                                     </button>
-                                                    <span style={{ fontSize: '10px', fontWeight: 'bold', minWidth: '12px', textAlign: 'center' }}>
+                                                    <span style={{ 
+                                                        fontSize: '11px', 
+                                                        fontWeight: 'bold', 
+                                                        minWidth: '20px', 
+                                                        textAlign: 'center',
+                                                        background: 'rgba(255, 140, 0, 0.2)',
+                                                        border: '1px solid #ff8c00',
+                                                        borderRadius: '3px',
+                                                        padding: '2px 4px',
+                                                        color: '#ff8c00'
+                                                    }}>
                                                         {repair.assignedCrew}
                                                     </span>
                                                     <button
                                                         onClick={() => {
                                                             const newDroidCount = repair.assignedCrew + 1;
+                                                            console.log(`🤖 Attempting to increase droids for ${repair.systemName} repair from ${repair.assignedCrew} to ${newDroidCount}`);
+                                                            
                                                             const validation = validateDroidAssignment(repair.id, newDroidCount);
+                                                            console.log(`🤖 Validation result:`, validation);
+                                                            
                                                             if (validation.valid) {
-                                                                updateRepairTaskDroidsSafe(repair.id, newDroidCount);
+                                                                const success = updateRepairTaskDroidsSafe(repair.id, newDroidCount);
+                                                                if (success) {
+                                                                    addErrorMessage(`Droids increased on ${repair.systemName}: ${repair.assignedCrew} → ${newDroidCount}`, 'info');
+                                                                }
+                                                            } else {
+                                                                addErrorMessage(validation.error || 'Cannot increase droids', 'warning');
                                                             }
                                                         }}
                                                         disabled={(() => {
@@ -3809,7 +4382,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                             })(),
                                                             display: 'flex',
                                                             alignItems: 'center',
-                                                            justifyContent: 'center'
+                                                            justifyContent: 'center',
+                                                            transition: 'background 0.2s ease'
                                                         }}
                                                     >
                                                         +
@@ -3974,29 +4548,99 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
 
                             {/* Master Emergency Protocol */}
-                            <button
-                                onClick={() => {
-                                    if (window.confirm('⚠️ ACTIVATE ALL EMERGENCY PROTOCOLS?\n\nThis will:\n- Activate emergency power\n- Prioritize life support\n- Begin emergency repairs on critical systems\n\nConfirm?')) {
-                                        activateEmergencyProtocols();
-                                    }
-                                }}
-                                style={{
-                                    padding: '12px',
-                                    background: 'linear-gradient(45deg, #ff4444, #ff6666)',
+                            <div style={{ position: 'relative', display: 'inline-block' }}>
+                                <button
+                                    onClick={() => {
+                                        if (window.confirm('⚠️ ACTIVATE ALL EMERGENCY PROTOCOLS?\n\nThis will:\n- Activate emergency power\n- Prioritize life support\n- Begin emergency repairs on critical systems\n\nConfirm?')) {
+                                            activateEmergencyProtocols();
+                                        }
+                                    }}
+                                    style={{
+                                        padding: '12px',
+                                        background: 'linear-gradient(45deg, #ff4444, #ff6666)',
+                                        border: '2px solid #ff4444',
+                                        borderRadius: '4px',
+                                        color: '#fff',
+                                        fontSize: '10px',
+                                        fontWeight: 'bold',
+                                        cursor: 'pointer',
+                                        textTransform: 'uppercase',
+                                        letterSpacing: '1px',
+                                        boxShadow: '0 0 10px rgba(255, 68, 68, 0.5)',
+                                        animation: getEmergencyStatus().level === 'red' ? 'blink 2s infinite' : 'none',
+                                        width: '100%'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (tooltip) tooltip.style.opacity = '1';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        const tooltip = e.currentTarget.nextElementSibling as HTMLElement;
+                                        if (tooltip) tooltip.style.opacity = '0';
+                                    }}
+                                >
+                                    🚨 EMERGENCY PROTOCOLS
+                                </button>
+                                
+                                {/* Tooltip */}
+                                <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: '50%',
+                                    transform: 'translateX(-50%)',
+                                    marginTop: '8px',
+                                    background: 'rgba(0, 0, 0, 0.95)',
                                     border: '2px solid #ff4444',
-                                    borderRadius: '4px',
+                                    borderRadius: '6px',
+                                    padding: '12px',
                                     color: '#fff',
-                                    fontSize: '10px',
-                                    fontWeight: 'bold',
-                                    cursor: 'pointer',
-                                    textTransform: 'uppercase',
-                                    letterSpacing: '1px',
-                                    boxShadow: '0 0 10px rgba(255, 68, 68, 0.5)',
-                                    animation: getEmergencyStatus().level === 'red' ? 'blink 2s infinite' : 'none'
-                                }}
-                            >
-                                🚨 EMERGENCY PROTOCOLS
-                            </button>
+                                    fontSize: '9px',
+                                    lineHeight: '1.4',
+                                    width: '300px',
+                                    zIndex: 1000,
+                                    opacity: 0,
+                                    transition: 'opacity 0.3s ease',
+                                    pointerEvents: 'none',
+                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.7)'
+                                }}>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '8px', color: '#ff6666', textAlign: 'center' }}>EMERGENCY PROTOCOLS ACTIVATION</div>
+                                    
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <div style={{ color: '#ffeb3b', fontWeight: 'bold', marginBottom: '4px' }}>1. 🔋 Emergency Power Activation:</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Adds +100 units of emergency power to the reactor</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Increases total available power from 600 to 700 units</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Activates emergency power systems across the ship</div>
+                                    </div>
+                                    
+                                    <div style={{ marginBottom: '8px' }}>
+                                        <div style={{ color: '#4caf50', fontWeight: 'bold', marginBottom: '4px' }}>2. 🫁 Life Support Priority:</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Redirects 40% of available power to life support systems</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Redistributes remaining power equally among other systems</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Ensures crew survival during critical situations</div>
+                                    </div>
+                                    
+                                    <div>
+                                        <div style={{ color: '#ff9800', fontWeight: 'bold', marginBottom: '4px' }}>3. 🔧 Automatic Emergency Repairs:</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Identifies all critically damaged systems (health &lt; 20%)</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Automatically starts emergency repairs on those systems</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Emergency repairs are faster but less effective than normal repairs</div>
+                                        <div style={{ marginLeft: '8px', color: '#ddd' }}>• Uses jury-rigged repairs that complete in 30% of normal time</div>
+                                    </div>
+                                    
+                                    {/* Tooltip arrow */}
+                                    <div style={{
+                                        position: 'absolute',
+                                        top: '-8px',
+                                        left: '50%',
+                                        transform: 'translateX(-50%)',
+                                        width: 0,
+                                        height: 0,
+                                        borderLeft: '8px solid transparent',
+                                        borderRight: '8px solid transparent',
+                                        borderBottom: '8px solid #ff4444'
+                                    }}></div>
+                                </div>
+                            </div>
 
                             {/* Individual Emergency Controls */}
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
@@ -4332,6 +4976,49 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                             })}
                         </div>
 
+                        {/* Dice Boost Summary */}
+                        <div style={{
+                            marginTop: '10px',
+                            padding: '8px',
+                            background: 'rgba(68, 255, 68, 0.1)',
+                            borderRadius: '4px',
+                            border: '1px solid #44ff44',
+                            fontSize: '9px'
+                        }}>
+                            <div style={{ fontWeight: 'bold', marginBottom: '6px', textAlign: 'center', color: '#44ff44' }}>
+                                BOOST SUMMARY
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                                <div>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#88ff88' }}>Boost Die Only (115-129%)</div>
+                                    <div style={{ fontSize: '8px', color: '#aaa' }}>
+                                        {Object.entries(engineeringState.powerDistribution.powerAllocations)
+                                            .filter(([, allocation]) => allocation >= 115 && allocation < 130)
+                                            .map(([system]) => system)
+                                            .join(', ') || 'None'}
+                                    </div>
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#44ff44' }}>Green Die Only (130-149%)</div>
+                                    <div style={{ fontSize: '8px', color: '#aaa' }}>
+                                        {Object.entries(engineeringState.powerDistribution.powerAllocations)
+                                            .filter(([, allocation]) => allocation >= 130 && allocation < 150)
+                                            .map(([system]) => system)
+                                            .join(', ') || 'None'}
+                                    </div>
+                                </div>
+                                <div style={{ gridColumn: '1 / span 2' }}>
+                                    <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#ffff44' }}>Upgrade to Yellow (150%+)</div>
+                                    <div style={{ fontSize: '8px', color: '#aaa' }}>
+                                        {Object.entries(engineeringState.powerDistribution.powerAllocations)
+                                            .filter(([, allocation]) => allocation >= 150)
+                                            .map(([system]) => system)
+                                            .join(', ') || 'None'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Power Threshold Legend */}
                         <div style={{
                             marginTop: '10px',
@@ -4407,7 +5094,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     return (
                                         <button
                                             key={systemName}
-                                            onClick={() => !isScanning && performSystemScan(systemName, 'basic')}
+                                            onClick={() => !isScanning && performSystemScanEnhanced(systemName, 'basic')}
                                             disabled={isScanning}
                                             style={{
                                                 padding: '4px 2px',
@@ -4444,7 +5131,7 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                                 name => !diagnosticScans[name]?.scanning
                                             );
                                             if (availableSystems.length > 0) {
-                                                performSystemScan(availableSystems[0], scanType as 'basic' | 'deep' | 'comprehensive');
+                                                performSystemScanEnhanced(availableSystems[0], scanType as 'basic' | 'deep' | 'comprehensive');
                                             }
                                         }}
                                         style={{
@@ -4464,6 +5151,46 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                     </button>
                                 ))}
                             </div>
+
+                            {/* Software Damage Alert Panel */}
+                            {softwareDamageEvents.filter(e => !e.resolved).length > 0 && (
+                                <div style={{
+                                    marginBottom: '8px',
+                                    padding: '6px',
+                                    background: 'rgba(255, 68, 68, 0.2)',
+                                    border: '2px solid #ff4444',
+                                    borderRadius: '4px',
+                                    animation: 'criticalPulse 2s infinite'
+                                }}>
+                                    <div style={{ fontSize: '9px', fontWeight: 'bold', marginBottom: '4px', color: '#ff4444', textAlign: 'center' }}>
+                                        🚨 SOFTWARE DAMAGE DETECTED
+                                    </div>
+                                    {softwareDamageEvents.filter(e => !e.resolved).slice(0, 2).map(event => (
+                                        <div key={event.id} style={{
+                                            fontSize: '7px',
+                                            marginBottom: '4px',
+                                            padding: '3px',
+                                            background: 'rgba(0, 0, 0, 0.3)',
+                                            borderRadius: '2px'
+                                        }}>
+                                            <div style={{ color: '#ff8c00', fontWeight: 'bold' }}>
+                                                {event.systemName.toUpperCase()}: -{event.efficiencyReduction}% EFFICIENCY
+                                            </div>
+                                            <div style={{ color: '#ffaa44' }}>
+                                                Requires: {event.requiredScanLevel.toUpperCase()} scan
+                                            </div>
+                                            <div style={{ color: '#888', fontSize: '6px', marginTop: '2px' }}>
+                                                {event.eventType.replace(/_/g, ' ')}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {softwareDamageEvents.filter(e => !e.resolved).length > 2 && (
+                                        <div style={{ fontSize: '7px', color: '#ff4444', textAlign: 'center', marginTop: '2px' }}>
+                                            +{softwareDamageEvents.filter(e => !e.resolved).length - 2} more issues
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         {/* Performance Analysis Section */}
@@ -4515,11 +5242,18 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                             <div style={{ fontSize: '10px', fontWeight: 'bold', marginBottom: '6px', textAlign: 'center' }}>
                                 SYSTEM CALIBRATION
                             </div>
+                            
+                            {/* Debug indicator */}
+                            <div style={{ fontSize: '7px', color: '#888', textAlign: 'center', marginBottom: '4px' }}>
+                                Debug: {activeTooltip || 'none'} | Pos: {tooltipPosition.x},{tooltipPosition.y}
+                            </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '2px', marginBottom: '8px' }}>
                                 {['efficiency', 'power', 'thermal'].map(calibrationType => (
                                     <button
                                         key={calibrationType}
+                                        onMouseEnter={(e) => handleTooltipMouseEnter(calibrationType, e)}
+                                        onMouseLeave={handleTooltipMouseLeave}
                                         onClick={() => {
                                             // Calibrate the system with highest strain
                                             const systemsToCalibrate = Object.entries(engineeringState.systemStatus)
@@ -4540,7 +5274,8 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                                             fontWeight: 'bold',
                                             cursor: 'pointer',
                                             textTransform: 'uppercase',
-                                            textAlign: 'center'
+                                            textAlign: 'center',
+                                            position: 'relative'
                                         }}
                                     >
                                         {calibrationType.substr(0, 4)}
@@ -4610,6 +5345,114 @@ const EngineeringStation: React.FC<EngineeringStationProps> = ({ gameState, onPl
                     </div>
                 </div>
             </div>
+            
+            {/* Calibration Tooltips - Rendered at top level to avoid clipping */}
+            {activeTooltip && (() => {
+                console.log('🔧 Rendering tooltip for:', activeTooltip);
+                const tooltipContent = getCalibrationTooltipContent(activeTooltip);
+                console.log('🔧 Tooltip content:', tooltipContent);
+                if (!tooltipContent) {
+                    console.log('🔧 No tooltip content found');
+                    return null;
+                }
+
+                console.log('🔧 Tooltip position:', tooltipPosition);
+                return (
+                    <div
+                        style={{
+                            position: 'fixed',
+                            left: `${tooltipPosition.x}px`,
+                            top: `${tooltipPosition.y}px`,
+                            transform: 'translateX(-50%)',
+                            width: '300px',
+                            background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+                            border: '2px solid #44ffff',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            zIndex: 10000,
+                            pointerEvents: 'none',
+                            opacity: 1,
+                            transition: 'opacity 0.3s ease',
+                            boxShadow: '0 8px 32px rgba(68, 255, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1)'
+                        }}
+                    >
+                        {/* Arrow */}
+                        <div
+                            style={{
+                                position: 'absolute',
+                                top: '-8px',
+                                left: '50%',
+                                transform: 'translateX(-50%)',
+                                width: 0,
+                                height: 0,
+                                borderLeft: '8px solid transparent',
+                                borderRight: '8px solid transparent',
+                                borderBottom: '8px solid #44ffff'
+                            }}
+                        />
+                        
+                        {/* Title */}
+                        <div style={{
+                            fontSize: '12px',
+                            fontWeight: 'bold',
+                            color: '#44ffff',
+                            marginBottom: '8px',
+                            textAlign: 'center',
+                            borderBottom: '1px solid #44ffff33',
+                            paddingBottom: '6px'
+                        }}>
+                            {tooltipContent.title}
+                        </div>
+                        
+                        {/* Description */}
+                        <div style={{
+                            fontSize: '10px',
+                            color: '#ffffff',
+                            marginBottom: '10px',
+                            fontStyle: 'italic'
+                        }}>
+                            {tooltipContent.description}
+                        </div>
+                        
+                        {/* Effects */}
+                        <div style={{
+                            marginBottom: '10px'
+                        }}>
+                            <div style={{
+                                fontSize: '10px',
+                                fontWeight: 'bold',
+                                color: '#66ff88',
+                                marginBottom: '4px'
+                            }}>
+                                EFFECTS:
+                            </div>
+                            {tooltipContent.effects.map((effect, index) => (
+                                <div key={index} style={{
+                                    fontSize: '9px',
+                                    color: '#cccccc',
+                                    marginLeft: '8px',
+                                    marginBottom: '2px'
+                                }}>
+                                    • {effect}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        {/* Usage */}
+                        <div style={{
+                            fontSize: '9px',
+                            color: '#ffaa44',
+                            fontWeight: 'bold',
+                            padding: '6px',
+                            background: 'rgba(255, 170, 68, 0.1)',
+                            borderRadius: '4px',
+                            border: '1px solid #ffaa4433'
+                        }}>
+                            {tooltipContent.usage}
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };
